@@ -5,6 +5,8 @@ tags: [iut, meta]
 statut: stable
 ---
 
+import { Quiz, Question, Choix, Correction } from '../../../components/quiz';
+
 Modèle et exemple rempli — le contenu porte sur la normalisation, il illustre le niveau de
 détail visé.
 
@@ -88,6 +90,37 @@ Décomposition :
 - `Etudiant(n_etudiant, nom, code_formation)`
 - `Formation(code_formation, libelle_formation)`
 :::
+
+## Se tester
+
+<Quiz>
+	<Question>
+		`code_formation → libelle_formation` dans une table dont la clé est `n_etudiant`.
+		Quelle forme normale est violée ?
+
+		<Choix>1FN</Choix>
+		<Choix>2FN</Choix>
+		<Choix correcte>3FN</Choix>
+
+		<Correction>
+			Un attribut non-clé en détermine un autre : dépendance transitive, donc 3FN.
+			La 2FN ne concerne que les dépendances sur une **partie** d'une clé composite.
+		</Correction>
+	</Question>
+
+	<Question>
+		Une colonne `produits` contenant `"stylo, cahier"`. Quelle règle est enfreinte ?
+
+		<Choix correcte>1FN : l'attribut n'est pas atomique</Choix>
+		<Choix>2FN : dépendance partielle de la clé</Choix>
+		<Choix>Aucune, tant que la chaîne est bien formée</Choix>
+
+		<Correction>
+			Une valeur multivaluée casse la 1FN. La correction est une ligne par produit,
+			pas un séparateur mieux choisi.
+		</Correction>
+	</Question>
+</Quiz>
 
 ## Ce que je n'ai pas compris
 

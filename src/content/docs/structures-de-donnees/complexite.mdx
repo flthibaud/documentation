@@ -10,6 +10,8 @@ sources:
     url: https://www.bigocheatsheet.com/
 ---
 
+import { Quiz, Question, Choix, Correction } from '../../../components/quiz';
+
 ## En une phrase
 
 La complexité mesure **comment le coût d'un algorithme grandit quand la taille de l'entrée
@@ -98,3 +100,69 @@ def somme(liste):          # O(n) en espace : n appels empilés
   les chaînes étant immuables. Utiliser `"".join(...)` ou un `StringBuilder`.
 - **Le slicing copie.** `liste[1:]` en Python est en O(n), pas en O(1) : une récursion qui
   découpe ainsi est bien plus coûteuse qu'elle n'en a l'air.
+
+## Se tester
+
+<Quiz>
+	<Question>
+		Deux boucles **successives** sur `n`, chacune en O(n). Complexité totale ?
+
+		<Choix correcte>O(n)</Choix>
+		<Choix>O(n²)</Choix>
+		<Choix>O(2n), qu'on ne simplifie pas</Choix>
+
+		<Correction>
+			`n + n = 2n`, et on jette les constantes. Seules des boucles **imbriquées**
+			donnent O(n²).
+		</Correction>
+	</Question>
+
+	<Question>
+		Une boucle sur `n` éléments contenant `if x in ma_liste`, où `ma_liste` en compte
+		aussi `n`. Complexité ?
+
+		<Choix>O(n), le test d'appartenance est constant</Choix>
+		<Choix correcte>O(n²)</Choix>
+		<Choix>O(n log n)</Choix>
+
+		<Correction>
+			`in` sur une liste est en O(n) : il parcourt jusqu'à trouver. Un `set` ou un
+			`dict` ramène le test à O(1) en moyenne, donc la boucle à O(n).
+		</Correction>
+	</Question>
+
+	<Question>
+		`append` sur une liste Python déclenche parfois un redimensionnement en O(n).
+		Que vaut sa complexité annoncée ?
+
+		<Choix>O(n), c'est le pire cas qui compte</Choix>
+		<Choix correcte>O(1) amorti</Choix>
+		<Choix>O(log n)</Choix>
+
+		<Correction>
+			Le doublement de capacité n'arrive qu'une fois toutes les `n` insertions. Réparti
+			sur l'ensemble des opérations, le coût moyen par `append` reste constant.
+		</Correction>
+	</Question>
+
+	<Question>
+		Cette fonction est en O(n) en temps. Quel est son coût **en espace** ?
+
+		```python
+		def somme(liste):
+		    if not liste:
+		        return 0
+		    return liste[0] + somme(liste[1:])
+		```
+
+		<Choix>O(1), elle n'alloue rien explicitement</Choix>
+		<Choix correcte>O(n), et elle n'est pas en O(n) en temps</Choix>
+		<Choix>O(log n), la profondeur de récursion</Choix>
+
+		<Correction>
+			Double piège : la pile d'appels occupe O(n), et `liste[1:]` **copie** à chaque
+			appel — ce qui met aussi le temps à O(n²). Voir
+			[Tableaux et listes](/documentation/structures-de-donnees/tableaux-et-listes/).
+		</Correction>
+	</Question>
+</Quiz>

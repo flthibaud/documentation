@@ -1,0 +1,31 @@
+---
+/** Révélée par `<Question>` une fois la réponse donnée. */
+---
+
+<div class="kb-correction" role="status" hidden>
+	<slot />
+</div>
+
+<style>
+	.kb-correction {
+		margin-top: 0.75rem;
+		padding: 0.6rem 0.85rem;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-2);
+		border-left: 2px solid var(--sl-color-accent);
+		background: var(--sl-color-black);
+	}
+
+	.kb-correction[hidden] {
+		display: none;
+	}
+
+	/* Contenu MDX : pas de hash de scope sur les enfants. */
+	.kb-correction :global(> :first-child) {
+		margin-top: 0;
+	}
+
+	.kb-correction :global(> :last-child) {
+		margin-bottom: 0;
+	}
+</style>

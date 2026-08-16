@@ -31,6 +31,7 @@ src/
 │   ├── structures-de-donnees/    fiches par structure
 │   └── iut/                      cours
 ├── components/                   surcharges Starlight (tags, sources)
+│   └── quiz/                     QCM, en custom elements sans framework
 ├── pages/tags/                   navigation par tag
 ├── lib/url.ts                    liens internes préfixés par le `base`
 └── styles/custom.css

@@ -1,0 +1,72 @@
+---
+interface Props {
+	/** Marque la bonne réponse. Une seule par `<Question>`. */
+	correcte?: boolean;
+}
+
+const { correcte = false } = Astro.props;
+---
+
+<button type="button" class="kb-choix" data-correcte={correcte ? '' : undefined}>
+	<slot />
+</button>
+
+<style>
+	.kb-choix {
+		display: block;
+		width: 100%;
+		margin-top: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		text-align: left;
+		font: inherit;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-white);
+		background: var(--sl-color-black);
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.375rem;
+		cursor: pointer;
+	}
+
+	.kb-choix:hover:not(:disabled) {
+		border-color: var(--sl-color-accent);
+	}
+
+	.kb-choix:disabled {
+		cursor: default;
+		opacity: 0.55;
+	}
+
+	/* Classes posées au runtime : Astro les suffixe avec le `data-astro-cid-*`
+	   déjà présent sur le bouton, le scope tient. */
+	.kb-choix.est-juste,
+	.kb-choix.est-faux {
+		opacity: 1;
+		font-weight: 600;
+	}
+
+	.kb-choix.est-juste {
+		color: var(--sl-color-green-high);
+		background: var(--sl-color-green-low);
+		border-color: var(--sl-color-green);
+	}
+
+	.kb-choix.est-faux {
+		color: var(--sl-color-red-high);
+		background: var(--sl-color-red-low);
+		border-color: var(--sl-color-red);
+	}
+
+	.kb-choix.est-juste::after {
+		content: ' ✓';
+	}
+
+	.kb-choix.est-faux::after {
+		content: ' ✗';
+	}
+
+	/* Le code inline garde la casse de Starlight mais pas sa marge de bloc. */
+	.kb-choix :global(code) {
+		background: transparent;
+		padding: 0;
+	}
+</style>

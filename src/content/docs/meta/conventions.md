@@ -84,6 +84,20 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 </Tabs>
 ```
 
+Renommer un `.md` en `.mdx` ne change pas l'URL : le slug vient du nom sans extension.
+
+## Composants interactifs
+
+`Quiz` teste un point précis de la fiche, en fin de fiche, sous un `## Se tester`. Squelette
+sur [Modèles](/documentation/meta/modeles/).
+
+Trois à quatre questions maximum, sur ce qui se retient mal — un piège, une complexité qu'on
+confond, une règle qui a une exception. Les mauvais choix doivent être des erreurs qu'on fait
+vraiment, pas des remplissages. La correction dit pourquoi les autres sont fausses.
+
+Le contenu du quiz est exclu de la recherche du site : les corrections ne remontent pas dans
+les résultats.
+
 ## Blocs de code
 
 Langage systématique, `title` quand c'est un fichier réel :

@@ -1,0 +1,84 @@
+---
+interface Props {
+	/** Intitulé affiché au-dessus des questions. */
+	titre?: string;
+}
+
+const { titre = 'Vérifier' } = Astro.props;
+---
+
+{/* `data-pagefind-ignore` : sinon Pagefind indexe les bonnes réponses et les
+    corrections, qui remontent dans la recherche du site. */}
+<kb-quiz class="kb-quiz" data-pagefind-ignore>
+	<div class="kb-quiz__entete">
+		<span class="kb-quiz__titre">{titre}</span>
+		<span class="kb-quiz__score" aria-live="polite" hidden></span>
+	</div>
+	<slot />
+</kb-quiz>
+
+<script>
+	class KbQuiz extends HTMLElement {
+		connectedCallback() {
+			const total = this.querySelectorAll('kb-question').length;
+			const score = this.querySelector<HTMLElement>('.kb-quiz__score');
+			if (!score || total === 0) return;
+
+			let justes = 0;
+			let repondues = 0;
+
+			this.addEventListener('kb:reponse', (evenement) => {
+				repondues += 1;
+				if ((evenement as CustomEvent<{ juste: boolean }>).detail.juste) justes += 1;
+
+				score.hidden = false;
+				score.textContent = `${justes} / ${total}`;
+				if (repondues === total) this.setAttribute('data-termine', '');
+			});
+		}
+	}
+
+	if (!customElements.get('kb-quiz')) customElements.define('kb-quiz', KbQuiz);
+</script>
+
+<style>
+	.kb-quiz {
+		display: block;
+		margin-top: 1.5rem;
+		padding: 1rem 1.25rem 1.25rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.5rem;
+		/* gray-6 se décale du fond de page dans les deux thèmes ; gray-7 n'existe
+		   qu'en thème clair. */
+		background: var(--sl-color-gray-6);
+	}
+
+	.kb-quiz[data-termine] {
+		border-color: var(--sl-color-accent);
+	}
+
+	.kb-quiz__entete {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.kb-quiz__titre {
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--sl-color-gray-3);
+	}
+
+	.kb-quiz__score {
+		font-size: var(--sl-text-xs);
+		font-variant-numeric: tabular-nums;
+		padding: 0.15rem 0.5rem;
+		border-radius: 999px;
+		border: 1px solid var(--sl-color-gray-5);
+		color: var(--sl-color-gray-2);
+	}
+</style>

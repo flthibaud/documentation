@@ -1,0 +1,56 @@
+---
+/**
+ * Slot unique : l'énoncé, puis les `<Choix>`, puis la `<Correction>`.
+ * L'ordre de la source est l'ordre d'affichage, rien n'est déplacé au runtime.
+ */
+---
+
+<kb-question class="kb-question">
+	<slot />
+</kb-question>
+
+<script>
+	class KbQuestion extends HTMLElement {
+		connectedCallback() {
+			this.addEventListener('click', (evenement) => {
+				const cible = evenement.target as HTMLElement | null;
+				const choisi = cible?.closest<HTMLButtonElement>('.kb-choix');
+				if (!choisi || this.hasAttribute('data-repondu')) return;
+
+				this.setAttribute('data-repondu', '');
+				const juste = choisi.hasAttribute('data-correcte');
+
+				for (const choix of this.querySelectorAll<HTMLButtonElement>('.kb-choix')) {
+					choix.disabled = true;
+					if (choix.hasAttribute('data-correcte')) choix.classList.add('est-juste');
+					else if (choix === choisi) choix.classList.add('est-faux');
+				}
+
+				this.querySelector('.kb-correction')?.removeAttribute('hidden');
+				this.dispatchEvent(
+					new CustomEvent('kb:reponse', { bubbles: true, detail: { juste } }),
+				);
+			});
+		}
+	}
+
+	if (!customElements.get('kb-question')) customElements.define('kb-question', KbQuestion);
+</script>
+
+<style>
+	.kb-question {
+		display: block;
+	}
+
+	/* `~` et non `+` : Astro intercale le <script> du composant entre deux instances. */
+	.kb-question ~ .kb-question {
+		margin-top: 1.5rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid var(--sl-color-gray-5);
+	}
+
+	/* L'énoncé arrive du MDX : ses paragraphes ne portent pas le hash de scope. */
+	.kb-question :global(p:first-child) {
+		margin-top: 0;
+	}
+</style>

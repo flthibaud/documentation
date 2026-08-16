@@ -107,6 +107,36 @@ La correction, repliée pour pouvoir réviser sans la voir.
 
 ````
 
+## Bloc QCM
+
+Demande une extension `.mdx` et un import. Le chemin relatif dépend de la profondeur du
+dossier : `../../../components/quiz` depuis `technique/`, `structures-de-donnees/` ou `iut/`.
+
+````mdx
+import { Quiz, Question, Choix, Correction } from '../../../components/quiz';
+
+## Se tester
+
+<Quiz>
+	<Question>
+		L'énoncé, en Markdown — le `code` et les liens y passent.
+
+		<Choix>Une réponse plausible</Choix>
+		<Choix correcte>La bonne</Choix>
+		<Choix>Une autre</Choix>
+
+		<Correction>
+			Pourquoi, et surtout pourquoi les autres sont fausses.
+		</Correction>
+	</Question>
+</Quiz>
+````
+
+`<Quiz titre="…">` change l'intitulé (« Vérifier » par défaut). Une seule `<Choix correcte>`
+par question. L'ordre de la source est l'ordre d'affichage : énoncé, choix, correction.
+
+Les réponses sont dans le HTML servi — c'est de l'auto-évaluation, pas un examen.
+
 ## Créer une fiche en ligne de commande
 
 ```bash
