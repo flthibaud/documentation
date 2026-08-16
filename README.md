@@ -19,6 +19,7 @@ pnpm dev        # http://localhost:4321/documentation
 | `pnpm build` | build dans `dist/`, vérifie les liens internes |
 | `pnpm preview` | sert `dist/` |
 | `pnpm check` | types + contenu, sans build |
+| `pnpm icones` | régénère les icônes PWA depuis `public/favicon.svg` |
 
 ## Organisation
 
@@ -30,14 +31,26 @@ src/
 │   ├── technique/                aide-mémoires, procédures, décisions
 │   ├── structures-de-donnees/    fiches par structure
 │   └── iut/                      cours
-├── components/                   surcharges Starlight (tags, sources)
+├── components/                   surcharges Starlight (head, tags, sources)
 │   └── quiz/                     QCM, en custom elements sans framework
-├── pages/tags/                   navigation par tag
+├── pages/
+│   ├── tags/                     navigation par tag
+│   └── manifest.webmanifest.ts   manifeste PWA
 ├── lib/url.ts                    liens internes préfixés par le `base`
 └── styles/custom.css
+
+integrations/service-worker.mjs   génère dist/sw.js après le build
+scripts/generer-icones.mjs        icônes PWA depuis le favicon
 ```
 
 Sidebar autogénérée depuis l'arborescence : ajouter un fichier suffit.
+
+## Application installable
+
+Le site est une PWA : installable depuis le navigateur mobile, et entièrement disponible
+hors ligne — pages, assets et index de recherche sont précachés au premier chargement.
+
+Détails et dépannage sur la page *Publication et déploiement* du site.
 
 ## Frontmatter
 

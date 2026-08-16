@@ -35,6 +35,18 @@ code — état, contrôles lecture/pause/étape, rendu SVG ou grille CSS.
 
 À traiter comme un composant par structure plutôt qu'un moteur générique.
 
+## PWA
+
+En place : manifeste, précache complet, hors-ligne, installable.
+
+- Pas d'indication de mise à jour. Le worker fait `skipWaiting` + `clients.claim`, donc
+  une nouvelle version s'applique au chargement suivant, sans le dire. Un bandeau
+  « nouvelle version disponible » demanderait de passer en `waiting` + message au client.
+- Pas d'indicateur hors-ligne. La navigation en réseau d'abord bascule sur le cache en
+  silence, ce qui est bien, mais rien ne signale qu'on lit une version en cache.
+- Icône encore dérivée du logo du starter Astro (`public/favicon.svg`). `pnpm icones`
+  régénère tout dès que ce fichier change.
+
 ## Divers
 
 - Bouton « recommencer » sur `<Quiz>` une fois toutes les questions répondues : refaire

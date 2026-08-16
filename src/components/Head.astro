@@ -1,0 +1,30 @@
+---
+import Default from '@astrojs/starlight/components/Head.astro';
+import { url } from '../lib/url';
+
+// `sw.js` n'est produit que par le build (integrations/service-worker.mjs) :
+// l'enregistrer en dev laisserait un worker qui sert du contenu figé.
+const enProduction = import.meta.env.PROD;
+---
+
+<Default><slot /></Default>
+
+<link rel="manifest" href={url('/manifest.webmanifest')} />
+<meta name="theme-color" content="#3447d4" />
+
+{/* iOS ignore le manifeste pour l'icône et le libellé de l'écran d'accueil. */}
+<link rel="apple-touch-icon" href={url('/icons/apple-touch-icon.png')} />
+<meta name="apple-mobile-web-app-title" content="DevBook" />
+<meta name="mobile-web-app-capable" content="yes" />
+
+{
+	enProduction && (
+		<script is:inline define:vars={{ chemin: url('/sw.js'), portee: url('/') }}>
+			if ('serviceWorker' in navigator) {
+				addEventListener('load', () => {
+					navigator.serviceWorker.register(chemin, { scope: portee }).catch(() => {});
+				});
+			}
+		</script>
+	)
+}

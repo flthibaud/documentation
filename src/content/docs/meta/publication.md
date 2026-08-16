@@ -52,6 +52,34 @@ Renommage du dépôt : mettre à jour `base` et les liens —
 3. `CNAME` DNS vers `flthibaud.github.io`.
 4. Retirer le préfixe des liens internes.
 
+## PWA
+
+Le site s'installe comme application (Android : menu → « Installer » ; iOS : Partager →
+« Sur l'écran d'accueil »). Tout le site est précaché, donc consultable hors ligne dès la
+première visite, recherche Pagefind comprise.
+
+Trois pièces :
+
+| Fichier | Rôle |
+| --- | --- |
+| `src/pages/manifest.webmanifest.ts` | manifeste en endpoint, pour que `start_url` et `scope` dérivent du `base` |
+| `integrations/service-worker.mjs` | écrit `dist/sw.js` après le build, avec la liste de précache |
+| `src/components/Head.astro` | `<link rel="manifest">`, icônes iOS, enregistrement du worker |
+
+Le nom du cache porte une empreinte du contenu de `dist/` : un déploiement sans changement
+réel n'invalide rien, et `activate` purge les versions précédentes.
+
+Le worker n'est enregistré qu'en production — en dev il servirait un site figé.
+
+Icônes régénérées par `pnpm icones` depuis `public/favicon.svg`, à relancer si le favicon
+change.
+
+### Portée du service worker
+
+Un worker servi depuis `/documentation/sw.js` ne peut contrôler que `/documentation/`. C'est
+exactement le `scope` voulu ici, mais ça interdit de déplacer le fichier ailleurs que sous le
+`base`.
+
 ## Symptômes
 
 | Symptôme | Cause |
@@ -60,3 +88,5 @@ Renommage du dépôt : mettre à jour `base` et les liens —
 | 404 sur une nouvelle fiche | `draft: true`, ou lien sans préfixe `/documentation` |
 | Build cassé sur un frontmatter | champ absent de `src/content.config.ts` |
 | Date de mise à jour absente | fichier pas encore commité, ou `fetch-depth` non nul manquant |
+| Contenu figé après un déploiement | worker d'une version précédente ; recharger deux fois, ou vider le stockage du site |
+| Pas de proposition d'installation | manifeste ou `sw.js` en 404, ou site ouvert en HTTP |

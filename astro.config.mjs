@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { serviceWorker } from './integrations/service-worker.mjs';
 
 /**
  * Publication sur GitHub Pages (site de projet).
@@ -36,6 +37,8 @@ export default defineConfig({
 			tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 4 },
 			customCss: ['./src/styles/custom.css'],
 			components: {
+				// Manifeste PWA, icônes iOS et enregistrement du service worker.
+				Head: './src/components/Head.astro',
 				// Affiche les tags et le statut de la page sous le titre.
 				PageTitle: './src/components/PageTitle.astro',
 				// Affiche les sources du frontmatter au-dessus du pied de page.
@@ -75,5 +78,8 @@ export default defineConfig({
 				},
 			],
 		}),
+		// Doit rester après starlight : le précache est construit depuis dist/,
+		// donc après que Pagefind et le sitemap ont écrit leurs fichiers.
+		serviceWorker({ base: BASE }),
 	],
 });
