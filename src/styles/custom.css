@@ -1,0 +1,31 @@
+/* Palette d'accentuation de la base de connaissance. */
+:root {
+	--sl-color-accent-low: #131e4f;
+	--sl-color-accent: #3447d4;
+	--sl-color-accent-high: #b3c7ff;
+
+	/* Un peu plus de largeur : les tableaux de complexité respirent mieux. */
+	--sl-content-width: 50rem;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #c7d6ff;
+	--sl-color-accent: #2f43c9;
+	--sl-color-accent-high: #182775;
+}
+
+/* Tableaux : lisibilité des fiches de complexité. */
+.sl-markdown-content table {
+	display: block;
+	overflow-x: auto;
+	font-size: var(--sl-text-sm);
+}
+
+.sl-markdown-content th {
+	white-space: nowrap;
+}
+
+/* Les blocs de code prennent beaucoup de place dans les fiches d'algo. */
+.expressive-code {
+	font-size: var(--sl-text-sm);
+}

@@ -1,0 +1,51 @@
+---
+/**
+ * Ajoute la liste des sources (frontmatter `sources`) au-dessus du pied de page
+ * standard de Starlight, qu'on réutilise tel quel.
+ */
+import Default from '@astrojs/starlight/components/Footer.astro';
+
+const { entry } = Astro.locals.starlightRoute;
+const sources = (entry.data as { sources?: { titre: string; url: string }[] }).sources ?? [];
+---
+
+{
+	sources.length > 0 && (
+		<aside class="kb-sources">
+			<h2>Sources</h2>
+			<ul>
+				{sources.map((source) => (
+					<li>
+						<a href={source.url} target="_blank" rel="noopener noreferrer">
+							{source.titre}
+						</a>
+					</li>
+				))}
+			</ul>
+		</aside>
+	)
+}
+
+<Default><slot /></Default>
+
+<style>
+	.kb-sources {
+		margin-top: 2.5rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--sl-color-hairline);
+	}
+
+	.kb-sources h2 {
+		font-size: var(--sl-text-sm);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--sl-color-gray-3);
+		margin: 0 0 0.5rem;
+	}
+
+	.kb-sources ul {
+		margin: 0;
+		padding-left: 1.2rem;
+		font-size: var(--sl-text-sm);
+	}
+</style>

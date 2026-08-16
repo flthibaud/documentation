@@ -1,0 +1,56 @@
+---
+import type { GetStaticPaths } from 'astro';
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { getCollection, type CollectionEntry } from 'astro:content';
+import { url, tagSlug } from '../../lib/url';
+
+export const getStaticPaths: GetStaticPaths = async () => {
+	const docs = await getCollection('docs', ({ data }) => !data.draft);
+	const byTag = new Map<string, { label: string; entries: CollectionEntry<'docs'>[] }>();
+
+	for (const doc of docs) {
+		for (const tag of doc.data.tags ?? []) {
+			const slug = tagSlug(tag);
+			const bucket = byTag.get(slug) ?? { label: tag, entries: [] };
+			bucket.entries.push(doc);
+			byTag.set(slug, bucket);
+		}
+	}
+
+	return [...byTag.entries()].map(([slug, { label, entries }]) => ({
+		params: { tag: slug },
+		props: {
+			label,
+			entries: entries.sort((a, b) => a.data.title.localeCompare(b.data.title, 'fr')),
+		},
+	}));
+};
+
+const { label, entries } = Astro.props as {
+	label: string;
+	entries: CollectionEntry<'docs'>[];
+};
+---
+
+<StarlightPage
+	frontmatter={{
+		title: `#${label}`,
+		description: `Fiches associées au tag ${label}.`,
+		template: 'doc',
+		tableOfContents: false,
+	}}
+>
+	<p>
+		{entries.length} fiche{entries.length > 1 ? 's' : ''} — <a href={url('/tags/')}>tous les tags</a>
+	</p>
+	<ul>
+		{
+			entries.map((entry) => (
+				<li>
+					<a href={url(entry.id ? `/${entry.id}/` : '/')}>{entry.data.title}</a>
+					{entry.data.description && <> — {entry.data.description}</>}
+				</li>
+			))
+		}
+	</ul>
+</StarlightPage>

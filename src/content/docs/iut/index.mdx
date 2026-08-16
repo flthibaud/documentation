@@ -1,0 +1,50 @@
+---
+title: IUT
+description: Cours, TD et TP repris au propre, matière par matière.
+tags: [iut]
+sidebar:
+  order: 0
+  label: Vue d'ensemble
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { url as lien } from '../../../lib/url';
+
+Notes de cours, par matière.
+
+<CardGrid>
+	<LinkCard
+		title="Modèle de fiche de cours"
+		href={lien('/iut/modele-de-cours/')}
+		description="Le squelette à copier pour chaque nouveau chapitre."
+	/>
+</CardGrid>
+
+## Organisation
+
+Un dossier par matière, un fichier par chapitre. La barre latérale se construit toute seule à
+partir de l'arborescence :
+
+```
+iut/
+├── index.mdx
+├── modele-de-cours.md
+├── bases-de-donnees/
+│   ├── index.md          ← page d'accueil de la matière
+│   ├── modele-relationnel.md
+│   └── sql-jointures.md
+├── programmation/
+│   └── poo-heritage.md
+└── reseaux/
+    └── modele-osi.md
+```
+
+Variante par semestre : remplacer le premier niveau par `s1/`, `s2/`. Un `index.md` par
+dossier de matière évite une entrée de sidebar sans page.
+
+## Tags
+
+Tagger avec `iut` + la matière (`sql`, `reseaux`, `poo`) + la notion (`arbre`,
+`recursivite`, `normalisation`). C'est ce qui relie un cours à sa fiche technique
+correspondante — le cours sur les arbres et
+[Arbres](/documentation/structures-de-donnees/arbres/) partagent le tag `arbre`.

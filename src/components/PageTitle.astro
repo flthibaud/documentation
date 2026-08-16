@@ -1,0 +1,77 @@
+---
+import { url, tagSlug } from '../lib/url';
+
+const { entry } = Astro.locals.starlightRoute;
+const tags: string[] = (entry.data as { tags?: string[] }).tags ?? [];
+const statut = (entry.data as { statut?: string }).statut ?? 'stable';
+---
+
+{/* `_top` = PAGE_TITLE_ID de Starlight, ciblé par le lien « retour en haut ». */}
+<h1 id="_top">{entry.data.title}</h1>
+
+{
+	(tags.length > 0 || statut !== 'stable') && (
+		<div class="kb-meta">
+			{statut !== 'stable' && <span class={`kb-statut kb-statut--${statut}`}>{statut}</span>}
+			{tags.map((tag) => (
+				<a class="kb-tag" href={url(`/tags/${tagSlug(tag)}/`)}>
+					#{tag}
+				</a>
+			))}
+		</div>
+	)
+}
+
+<style>
+	@layer starlight.core {
+		h1 {
+			margin-top: 1rem;
+			font-size: var(--sl-text-h1);
+			line-height: var(--sl-line-height-headings);
+			font-weight: 600;
+			color: var(--sl-color-white);
+		}
+	}
+
+	.kb-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin-top: 0.6rem;
+	}
+
+	.kb-tag,
+	.kb-statut {
+		font-size: var(--sl-text-xs);
+		line-height: 1.4;
+		padding: 0.15rem 0.5rem;
+		border-radius: 999px;
+		border: 1px solid var(--sl-color-gray-5);
+	}
+
+	.kb-tag {
+		color: var(--sl-color-gray-2);
+		text-decoration: none;
+	}
+
+	.kb-tag:hover {
+		color: var(--sl-color-white);
+		border-color: var(--sl-color-accent);
+	}
+
+	.kb-statut {
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		font-weight: 600;
+	}
+
+	.kb-statut--brouillon {
+		color: var(--sl-color-orange-high);
+		border-color: var(--sl-color-orange);
+	}
+
+	.kb-statut--en-cours {
+		color: var(--sl-color-blue-high);
+		border-color: var(--sl-color-blue);
+	}
+</style>

@@ -1,49 +1,68 @@
-# Starlight Starter Kit: Basics
+# Base de connaissance
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+Notes techniques, structures de données et cours de l'IUT.
 
-```
-pnpm create astro@latest -- --template starlight
-```
+En ligne : <https://flthibaud.github.io/documentation>
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+Astro + Starlight, publié sur GitHub Pages à chaque push sur `main`.
 
-## 🚀 Project Structure
+## Commandes
 
-Inside of your Astro + Starlight project, you'll see the following folders and files:
-
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
+```bash
+pnpm install
+pnpm dev        # http://localhost:4321/documentation
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+| Commande | Effet |
+| --- | --- |
+| `pnpm dev` | serveur de dev |
+| `pnpm build` | build dans `dist/`, vérifie les liens internes |
+| `pnpm preview` | sert `dist/` |
+| `pnpm check` | types + contenu, sans build |
 
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+## Organisation
 
-Static assets, like favicons, can be placed in the `public/` directory.
+```
+src/
+├── content/docs/
+│   ├── index.mdx                 accueil
+│   ├── meta/                     conventions, modèles, déploiement
+│   ├── technique/                aide-mémoires, procédures, décisions
+│   ├── structures-de-donnees/    fiches par structure
+│   └── iut/                      cours
+├── components/                   surcharges Starlight (tags, sources)
+├── pages/tags/                   navigation par tag
+├── lib/url.ts                    liens internes préfixés par le `base`
+└── styles/custom.css
+```
 
-## 🧞 Commands
+Sidebar autogénérée depuis l'arborescence : ajouter un fichier suffit.
 
-All commands are run from the root of the project, from a terminal:
+## Frontmatter
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `pnpm install`             | Installs dependencies                            |
-| `pnpm dev`             | Starts local dev server at `localhost:4321`      |
-| `pnpm build`           | Build your production site to `./dist/`          |
-| `pnpm preview`         | Preview your build locally, before deploying     |
-| `pnpm astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `pnpm astro -- --help` | Get help using the Astro CLI                     |
+```yaml
+---
+title: Titre                 # seul champ obligatoire
+description: Une phrase.
+tags: [git, outils]
+statut: brouillon            # brouillon | en-cours | stable
+sources:
+  - titre: Doc PostgreSQL
+    url: https://…
+draft: false                 # exclu du build de prod
+---
+```
 
-## 👀 Want to learn more?
+Schéma dans [`src/content.config.ts`](src/content.config.ts). Modèles de fiches sur la page
+*Modèles* du site.
 
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+## Déploiement
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), déclenché sur push `main`.
+
+Prérequis unique côté GitHub : **Settings → Pages → Source = GitHub Actions**.
+
+## Renommage du dépôt / domaine perso
+
+`SITE` et `BASE` en haut de [`astro.config.mjs`](astro.config.mjs), plus les liens internes
+absolus : `grep -rl '/documentation/' src/content`.

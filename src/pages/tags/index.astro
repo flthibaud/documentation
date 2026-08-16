@@ -1,0 +1,84 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { getCollection } from 'astro:content';
+import { url, tagSlug } from '../../lib/url';
+
+const docs = await getCollection('docs', ({ data }) => !data.draft);
+
+const counts = new Map<string, number>();
+for (const doc of docs) {
+	for (const tag of doc.data.tags ?? []) {
+		counts.set(tag, (counts.get(tag) ?? 0) + 1);
+	}
+}
+
+const tags = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr'));
+---
+
+<StarlightPage
+	frontmatter={{
+		title: 'Parcourir par tag',
+		description: 'Tous les mots-clés utilisés dans la base de connaissance.',
+		template: 'doc',
+		tableOfContents: false,
+	}}
+>
+	{
+		tags.length === 0 ? (
+			<p>
+				Aucun tag pour l’instant. Ajoute un champ <code>tags</code> au frontmatter d’une fiche
+				pour la voir apparaître ici.
+			</p>
+		) : (
+			<>
+				<p>
+					{tags.length} tags pour {docs.length} fiches.
+				</p>
+				<ul class="kb-tag-cloud">
+					{tags.map(([tag, count]) => (
+						<li>
+							<a href={url(`/tags/${tagSlug(tag)}/`)}>
+								#{tag} <span class="kb-count">{count}</span>
+							</a>
+						</li>
+					))}
+				</ul>
+			</>
+		)
+	}
+</StarlightPage>
+
+<style>
+	.kb-tag-cloud {
+		list-style: none;
+		padding: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.kb-tag-cloud li {
+		margin: 0;
+	}
+
+	.kb-tag-cloud a {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.3rem 0.7rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 999px;
+		text-decoration: none;
+		color: var(--sl-color-gray-2);
+	}
+
+	.kb-tag-cloud a:hover {
+		color: var(--sl-color-white);
+		border-color: var(--sl-color-accent);
+	}
+
+	.kb-count {
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+</style>

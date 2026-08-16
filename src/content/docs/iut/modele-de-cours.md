@@ -1,0 +1,104 @@
+---
+title: Modèle de fiche de cours
+description: Le squelette d'une fiche de cours, rempli sur un exemple pour montrer le niveau de détail attendu.
+tags: [iut, meta]
+statut: stable
+---
+
+Modèle et exemple rempli — le contenu porte sur la normalisation, il illustre le niveau de
+détail visé.
+
+## Notions du cours
+
+- Dépendance fonctionnelle
+- Première, deuxième et troisième forme normale (1FN, 2FN, 3FN)
+- Redondance et anomalies de mise à jour
+
+## L'essentiel à retenir
+
+**Une dépendance fonctionnelle `A → B`** signifie qu'une valeur de `A` détermine une seule
+valeur de `B`. Si je connais le numéro de commande, je connais la date : `n_commande → date`.
+
+Les trois formes normales, dans l'ordre :
+
+| Forme | Règle | Ce qu'elle élimine |
+| --- | --- | --- |
+| 1FN | tout attribut est atomique (pas de liste dans une case) | les champs multivalués |
+| 2FN | 1FN + tout attribut non-clé dépend de **toute** la clé | les dépendances partielles |
+| 3FN | 2FN + aucun attribut non-clé n'en détermine un autre | les dépendances transitives |
+
+La formule mnémotechnique : *chaque attribut dépend de la clé, de toute la clé, et de rien
+que la clé.*
+
+**Pourquoi normaliser** : une donnée dupliquée finit toujours par diverger. Si l'adresse d'un
+client apparaît dans mille lignes de commandes, un déménagement demande mille mises à jour —
+et il en manquera une.
+
+## Exemples travaillés
+
+Table non normalisée :
+
+| n_commande | client | adresse_client | produits |
+| --- | --- | --- | --- |
+| 1 | Dupont | 3 rue Hugo | stylo, cahier |
+
+Ce qui ne va pas, étape par étape :
+
+1. **1FN violée** : `produits` contient une liste. → Une ligne par produit.
+2. **2FN violée** : avec la clé `(n_commande, produit)`, `client` ne dépend que de
+   `n_commande`, donc d'une partie de la clé seulement. → Séparer en table `Commande` et table
+   `LigneCommande`.
+3. **3FN violée** : `adresse_client` dépend de `client`, qui n'est pas la clé — dépendance
+   transitive. → Créer une table `Client`.
+
+Résultat :
+
+```sql
+CREATE TABLE Client (
+    id_client   INT PRIMARY KEY,
+    nom         VARCHAR(100) NOT NULL,
+    adresse     VARCHAR(200)
+);
+
+CREATE TABLE Commande (
+    n_commande  INT PRIMARY KEY,
+    id_client   INT NOT NULL REFERENCES Client(id_client),
+    date        DATE NOT NULL
+);
+
+CREATE TABLE LigneCommande (
+    n_commande  INT REFERENCES Commande(n_commande),
+    produit     VARCHAR(100),
+    quantite    INT NOT NULL CHECK (quantite > 0),
+    PRIMARY KEY (n_commande, produit)
+);
+```
+
+## Exercices types
+
+**Énoncé.** Soit `Etudiant(n_etudiant, nom, code_formation, libelle_formation)`.
+En quelle forme normale est cette table ? La normaliser si besoin.
+
+:::note[Corrigé]
+Elle est en 2FN mais **pas en 3FN** : `code_formation → libelle_formation` est une dépendance
+transitive (un attribut non-clé en détermine un autre).
+
+Décomposition :
+
+- `Etudiant(n_etudiant, nom, code_formation)`
+- `Formation(code_formation, libelle_formation)`
+:::
+
+## Ce que je n'ai pas compris
+
+- La différence exacte entre 3FN et forme normale de Boyce-Codd. À reprendre : BCNF semble
+  concerner le cas où un attribut non-clé détermine une partie de la clé.
+- Quand la dénormalisation est justifiée en pratique. Le prof a mentionné les performances en
+  lecture, sans détailler l'arbitrage.
+
+## Liens
+
+- [Complexité algorithmique](/documentation/structures-de-donnees/complexite/) — pour comprendre
+  le coût des jointures qu'ajoute la normalisation.
+- [Arbres](/documentation/structures-de-donnees/arbres/) — les index B+arbres, l'autre moitié
+  du sujet « performance en base ».

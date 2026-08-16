@@ -1,0 +1,44 @@
+---
+title: Documentation technique
+description: Aide-mémoires, procédures et notes d'outillage accumulés au fil des projets.
+tags: [technique]
+sidebar:
+  order: 0
+  label: Vue d'ensemble
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { url as lien } from '../../../lib/url';
+
+Commandes, configurations, procédures, décisions techniques.
+
+<CardGrid>
+	<LinkCard
+		title="Aide-mémoire Git"
+		href={lien('/technique/aide-memoire-git/')}
+		description="Les commandes qu'on oublie toujours, surtout celles qui réparent."
+	/>
+</CardGrid>
+
+## Comment ce rayon s'organise
+
+À plat tant que le rayon est petit, puis un sous-dossier par domaine — repris
+automatiquement dans la sidebar :
+
+```
+technique/
+├── index.mdx
+├── aide-memoire-git.md
+├── bases-de-donnees/
+│   └── index-postgres.md
+├── outils/
+│   └── docker-compose.md
+└── decisions/
+    └── 001-choix-du-framework.md
+```
+
+## Types de fiches
+
+- **Aide-mémoire** — commandes ou raccourcis, peu de prose.
+- **Procédure** — étapes ordonnées, prérequis, vérification finale.
+- **Décision** — contexte, options écartées, décision, conséquences.

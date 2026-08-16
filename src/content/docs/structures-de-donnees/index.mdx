@@ -1,0 +1,51 @@
+---
+title: Structures de données
+description: Une fiche par structure — opérations, complexités, et surtout quand l'utiliser.
+tags: [structure-de-donnees]
+sidebar:
+  order: 0
+  label: Vue d'ensemble
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { url as lien } from '../../../lib/url';
+
+Fiches par structure : opérations, complexités, arbitrages.
+
+<CardGrid>
+	<LinkCard title="Complexité algorithmique" href={lien('/structures-de-donnees/complexite/')} description="Lire un O(n), et savoir quand ça compte vraiment." />
+	<LinkCard title="Tableaux et listes chaînées" href={lien('/structures-de-donnees/tableaux-et-listes/')} description="Accès direct contre insertion bon marché." />
+	<LinkCard title="Piles et files" href={lien('/structures-de-donnees/piles-et-files/')} description="LIFO, FIFO, et les parcours qui en découlent." />
+	<LinkCard title="Tables de hachage" href={lien('/structures-de-donnees/tables-de-hachage/')} description="O(1) en moyenne — la structure la plus utilisée du métier." />
+	<LinkCard title="Arbres" href={lien('/structures-de-donnees/arbres/')} description="ABR, équilibrage, tas, et les index de bases de données." />
+	<LinkCard title="Graphes" href={lien('/structures-de-donnees/graphes/')} description="Représentations, parcours, plus court chemin." />
+</CardGrid>
+
+## Le tableau de choix
+
+Quand on hésite, c'est presque toujours entre ces six-là.
+
+| Besoin principal | Structure | Coût typique |
+| --- | --- | --- |
+| Accès par position | Tableau dynamique | O(1) |
+| Recherche par clé | Table de hachage | O(1) en moyenne |
+| Garder les éléments triés | Arbre binaire de recherche équilibré | O(log n) |
+| Toujours le plus petit / grand | Tas binaire | O(log n) pour extraire |
+| Traiter dans l'ordre d'arrivée | File | O(1) |
+| Défaire la dernière action | Pile | O(1) |
+| Relations entre entités | Graphe | dépend du parcours |
+
+## Critères de choix
+
+1. **Opération dominante** — c'est elle qui doit être rapide, le reste peut coûter.
+2. **Volume** — sous quelques centaines d'éléments, un tableau bat souvent une structure
+   plus savante : moins d'indirections, meilleure localité mémoire.
+3. **Ordre nécessaire ?** — si oui, la table de hachage est éliminée.
+
+La complexité asymptotique ignore les constantes et le cache CPU : un tableau parcouru
+linéairement peut battre une liste chaînée théoriquement équivalente d'un facteur dix.
+
+## Pour aller plus loin
+
+- [Big-O Cheat Sheet](https://www.bigocheatsheet.com/) — le tableau récapitulatif de référence.
+- [VisuAlgo](https://visualgo.net/fr) — visualisation animée de chaque structure, en français.

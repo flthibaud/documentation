@@ -1,40 +1,66 @@
 ---
-title: Welcome to Starlight
-description: Get started building your docs site with Starlight.
-template: splash # Remove or comment out this line to display the site sidebar on this page.
+title: Base de connaissance
+description: Notes techniques, structures de données et cours de l’IUT, au même endroit.
+template: splash
 hero:
-  tagline: Congrats on setting up a new Starlight project!
-  image:
-    file: ../../assets/houston.webp
+  tagline: Notes techniques, structures de données, cours de l’IUT.
   actions:
-    - text: Example Guide
-      link: /guides/example/
+    - text: Comment ça marche
+      link: /documentation/meta/comment-utiliser/
       icon: right-arrow
-    - text: Read the Starlight docs
-      link: https://starlight.astro.build
+    - text: Voir sur GitHub
+      link: https://github.com/flthibaud/documentation
       icon: external
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+import { url as lien } from '../../lib/url';
 
-## Next steps
+## Les trois rayons
 
-<CardGrid stagger>
-	<Card title="Update content" icon="pencil">
-		Edit `src/content/docs/index.mdx` to see this page change.
+<CardGrid>
+	<LinkCard
+		title="Documentation technique"
+		href={lien('/technique/')}
+		description="Aide-mémoires, procédures et notes d’outillage : ce que j’utilise au quotidien."
+	/>
+	<LinkCard
+		title="Structures de données"
+		href={lien('/structures-de-donnees/')}
+		description="Une fiche par structure : opérations, complexités, quand l’utiliser et quand l’éviter."
+	/>
+	<LinkCard
+		title="IUT"
+		href={lien('/iut/')}
+		description="Cours, TD et TP repris au propre, matière par matière."
+	/>
+	<LinkCard
+		title="Parcourir par tag"
+		href={lien('/tags/')}
+		description="La navigation transversale : toutes les fiches qui parlent de SQL, de Git, de récursivité…"
+	/>
+</CardGrid>
+
+## Trouver quelque chose
+
+<CardGrid>
+	<Card title="Recherche" icon="magnifier">
+		`Ctrl` + `K` — Pagefind, indexe le texte et les blocs de code.
 	</Card>
-	<Card title="Change page layout" icon="document">
-		Delete `template: splash` in `src/content/docs/index.mdx` to display a
-		sidebar on this page.
+	<Card title="Sidebar" icon="list-format">
+		Autogénérée depuis l’arborescence. Une fiche = un fichier Markdown.
 	</Card>
-	<Card title="Add new content" icon="add-document">
-		Add Markdown or MDX files to `src/content/docs` to create new pages.
+	<Card title="Tags" icon="random">
+		Navigation transversale : un même tag relie un cours d’IUT et une note technique.
 	</Card>
-	<Card title="Configure your site" icon="setting">
-		Edit your `sidebar` and other config in `astro.config.mjs`.
-	</Card>
-	<Card title="Read the docs" icon="open-book">
-		Learn more in [the Starlight Docs](https://starlight.astro.build/).
+	<Card title="Édition" icon="pencil">
+		Lien « Modifier cette page » vers l’éditeur GitHub sur chaque fiche.
 	</Card>
 </CardGrid>
+
+## Ajouter une fiche
+
+Un `.md` dans le bon dossier de `src/content/docs/`, puis push — le déploiement suit.
+<a href={lien('/meta/modeles/')}>Modèles</a> et
+<a href={lien('/meta/conventions/')}>conventions</a>.
