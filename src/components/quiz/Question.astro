@@ -1,17 +1,32 @@
 ---
+interface Props {
+	/** Fige l'ordre des choix, quand il porte du sens (progression, « aucune des deux »). */
+	ordonnee?: boolean;
+}
+
 /**
  * Slot unique : l'énoncé, puis les `<Choix>`, puis la `<Correction>`.
- * L'ordre de la source est l'ordre d'affichage, rien n'est déplacé au runtime.
+ * L'ordre de la source est l'ordre d'affichage, à l'exception du mélange des choix.
  */
+const { ordonnee = false } = Astro.props;
 ---
 
-<kb-question class="kb-question">
+<kb-question class="kb-question" data-ordonnee={ordonnee ? '' : undefined}>
 	<slot />
 </kb-question>
 
 <script>
+	import { melangerEnfants } from './melanger';
+
 	class KbQuestion extends HTMLElement {
 		connectedCallback() {
+			// `<Quiz>` déplace ses questions pour les mélanger, ce qui refait passer
+			// par connectedCallback. Sans ce garde, le clic serait traité deux fois.
+			if (this.hasAttribute('data-pret')) return;
+			this.setAttribute('data-pret', '');
+
+			if (!this.hasAttribute('data-ordonnee')) melangerEnfants(this, ':scope > .kb-choix');
+
 			this.addEventListener('click', (evenement) => {
 				const cible = evenement.target as HTMLElement | null;
 				const choisi = cible?.closest<HTMLButtonElement>('.kb-choix');
@@ -42,7 +57,8 @@
 		display: block;
 	}
 
-	/* `~` et non `+` : Astro intercale le <script> du composant entre deux instances. */
+	/* `~` et non `+` : Astro inline le <script> du composant entre deux instances
+	   dès qu'il n'a plus d'import partagé à sortir en bundle. */
 	.kb-question ~ .kb-question {
 		margin-top: 1.5rem;
 		padding-top: 1.5rem;

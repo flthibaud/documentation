@@ -95,6 +95,10 @@ Trois à quatre questions maximum, sur ce qui se retient mal — un piège, une 
 confond, une règle qui a une exception. Les mauvais choix doivent être des erreurs qu'on fait
 vraiment, pas des remplissages. La correction dit pourquoi les autres sont fausses.
 
+Questions et choix sont mélangés à chaque chargement : ne jamais écrire un choix qui renvoie
+à une position (« les deux premières », « aucune des réponses ci-dessus »). Si l'ordre compte,
+`<Quiz ordonne>` ou `<Question ordonnee>`.
+
 Le contenu du quiz est exclu de la recherche du site : les corrections ne remontent pas dans
 les résultats.
 

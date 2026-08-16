@@ -132,8 +132,18 @@ import { Quiz, Question, Choix, Correction } from '../../../components/quiz';
 </Quiz>
 ````
 
-`<Quiz titre="…">` change l'intitulé (« Vérifier » par défaut). Une seule `<Choix correcte>`
-par question. L'ordre de la source est l'ordre d'affichage : énoncé, choix, correction.
+Une seule `<Choix correcte>` par question. Dans la source, l'ordre est toujours énoncé,
+choix, correction.
+
+Questions et choix sont **mélangés au chargement**, pour ne pas retenir « c'est la 2e ».
+Deux échappatoires quand l'ordre porte du sens :
+
+| Attribut | Effet |
+| --- | --- |
+| `<Quiz ordonne>` | fige l'ordre des questions (l'une s'appuie sur la précédente) |
+| `<Question ordonnee>` | fige l'ordre des choix (échelle 1FN → 3FN, « aucune des deux ») |
+
+`<Quiz titre="…">` change l'intitulé, « Vérifier » par défaut.
 
 Les réponses sont dans le HTML servi — c'est de l'auto-évaluation, pas un examen.
 

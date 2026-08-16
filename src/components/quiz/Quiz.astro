@@ -2,14 +2,16 @@
 interface Props {
 	/** Intitulé affiché au-dessus des questions. */
 	titre?: string;
+	/** Fige l'ordre des questions, quand l'une s'appuie sur la précédente. */
+	ordonne?: boolean;
 }
 
-const { titre = 'Vérifier' } = Astro.props;
+const { titre = 'Vérifier', ordonne = false } = Astro.props;
 ---
 
 {/* `data-pagefind-ignore` : sinon Pagefind indexe les bonnes réponses et les
     corrections, qui remontent dans la recherche du site. */}
-<kb-quiz class="kb-quiz" data-pagefind-ignore>
+<kb-quiz class="kb-quiz" data-pagefind-ignore data-ordonne={ordonne ? '' : undefined}>
 	<div class="kb-quiz__entete">
 		<span class="kb-quiz__titre">{titre}</span>
 		<span class="kb-quiz__score" aria-live="polite" hidden></span>
@@ -18,8 +20,15 @@ const { titre = 'Vérifier' } = Astro.props;
 </kb-quiz>
 
 <script>
+	import { melangerEnfants } from './melanger';
+
 	class KbQuiz extends HTMLElement {
 		connectedCallback() {
+			if (this.hasAttribute('data-pret')) return;
+			this.setAttribute('data-pret', '');
+
+			if (!this.hasAttribute('data-ordonne')) melangerEnfants(this, ':scope > kb-question');
+
 			const total = this.querySelectorAll('kb-question').length;
 			const score = this.querySelector<HTMLElement>('.kb-quiz__score');
 			if (!score || total === 0) return;
