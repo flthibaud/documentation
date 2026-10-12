@@ -1,0 +1,232 @@
+---
+title: Releases et SemVer
+description: Choisir un numéro de version, et transformer un tag git en images publiées et en GitHub Release sans rien faire d'autre.
+tags: [ci, github, semver, release]
+statut: stable
+sidebar:
+  order: 5
+sources:
+  - titre: Semantic Versioning 2.0.0
+    url: https://semver.org/lang/fr/
+  - titre: GitHub — Automatically generated release notes
+    url: https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes
+  - titre: GitHub CLI — gh release create
+    url: https://cli.github.com/manual/gh_release_create
+---
+
+import { Quiz, Question, Choix, Correction } from '../../../../components/quiz';
+
+Une release, du côté de celui qui la coupe, doit tenir en une commande :
+
+```bash
+git checkout master && git merge --no-ff develop
+git tag -a v0.2.0 -m "0.2.0"
+git push origin master --follow-tags
+```
+
+Tout le reste — images `0.2.0`, `0.2`, `latest`, numéro gravé dans le binaire, GitHub
+Release avec ses notes — est du travail de CI. Cette page décrit d'abord comment choisir le
+numéro, puis la chaîne qui part du tag.
+
+## Le numéro
+
+`MAJEUR.MINEUR.PATCH`, incrémenté selon **ce que la mise à jour casse chez celui qui
+l'installe**. La table de décision côté opérateur est dans
+[Workflows Git en équipe](/documentation/technique/workflows-git/#semver-lu-du-bon-côté) ;
+en résumé : une variable d'environnement renommée ou une migration destructive est un
+majeur, une fonctionnalité est un mineur, un correctif est un patch.
+
+Trois règles qui se retiennent mal :
+
+- **Un incrément remet à zéro ce qui est à sa droite.** Après `1.4.7`, un mineur donne
+  `1.5.0`, jamais `1.5.7`.
+- **En `0.x`, le mineur joue le rôle du majeur.** `0.2.0` a le droit de casser ce que
+  `0.1.0` faisait ; c'est à ça que sert le zéro de tête. Passer en `1.0.0` est une promesse,
+  pas un jugement sur la maturité du code.
+- **Les numéros ne sont pas des décimaux.** `1.10.0` vient après `1.9.0`.
+
+### Pré-versions
+
+```
+v0.3.0-rc.1  <  v0.3.0-rc.2  <  v0.3.0
+```
+
+Tout ce qui suit le `-` est une pré-version : elle **précède** la version finale dans
+l'ordre SemVer, et se compare identifiant par identifiant (numérique par valeur, textuel par
+ordre alphabétique). Suffixes courants : `-alpha.1`, `-beta.2`, `-rc.1`.
+
+La conséquence opérationnelle est toujours la même : une pré-version ne doit atterrir sur
+aucun canal par défaut. Ni `latest` Docker, ni « Latest release » GitHub, ni `npm install`
+sans `@next`. Le test tient en une ligne — la présence d'un `-` dans le tag — et il apparaît
+deux fois dans la CI de Signet, une fois pour l'image, une fois pour la release.
+
+Il existe aussi les métadonnées de build, après un `+` (`1.0.0+20260818`). Elles sont
+**ignorées** dans les comparaisons : `1.0.0+a` et `1.0.0+b` sont la même version pour SemVer,
+et beaucoup d'outils refusent le `+` dans un tag Docker. À éviter.
+
+### Le préfixe `v`
+
+`v0.2.0` dans git, `0.2.0` dans SemVer. La spécification ne connaît pas le `v`, mais l'usage
+git l'a imposé (il distingue un tag de version d'un tag quelconque), et toute la chaîne
+d'outils sait le retirer : `type=semver` produit `0.2.0`. Le seul impératif est la cohérence
+— le filtre `tags: ["v*"]` du déclencheur ne verra jamais un tag écrit `0.2.0`.
+
+## La chaîne, maillon par maillon
+
+```
+git push --follow-tags
+        │
+        ├─ on: push: tags: ["v*"]            → le workflow part
+        │
+        ├─ metadata-action                   → tags 0.2.0, 0.2, latest, sha-…
+        │     └─ outputs.version = 0.2.0     → build-arg VERSION
+        │            └─ -ldflags -X main.version   → le binaire connaît sa version
+        │
+        └─ job release (if: refs/tags/v*)    → gh release create --generate-notes
+```
+
+### Le job de release
+
+```yaml title=".github/workflows/ci.yml — Signet"
+release:
+  needs: [build-and-push]
+  if: startsWith(github.ref, 'refs/tags/v')
+  permissions:
+    contents: write
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ github.ref_name }}
+      run: |
+        prerelease=""
+        case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+        gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag $prerelease
+```
+
+Quatre décisions, toutes justifiables une par une :
+
+| Élément | Raison |
+| --- | --- |
+| `needs: [build-and-push]` | les notes ne doivent pas annoncer une image qui n'existe pas encore |
+| `fetch-depth: 0` | les notes couvrent l'écart depuis le tag précédent, invisible dans un clone superficiel |
+| `permissions: contents: write` | créer une release écrit dans le dépôt ; le défaut du workflow est `read` |
+| `--verify-tag` | refuse de créer la release si le tag n'existe pas côté serveur, au lieu de le créer sur le dernier commit |
+
+`gh` est préinstallé sur les runners GitHub ; il lui faut seulement `GH_TOKEN` dans
+l'environnement.
+
+### Ce que fait `--generate-notes`
+
+GitHub liste les **PR fusionnées** depuis le tag précédent, avec leur titre et leur auteur.
+Corollaire souvent découvert trop tard : les titres de PR deviennent de la documentation
+publique. Un `fix stuff` finit dans les notes de version.
+
+Le regroupement se configure par un fichier versionné :
+
+```yaml title=".github/release.yml"
+changelog:
+  exclude:
+    labels: [ignore-for-release]
+  categories:
+    - title: Nouveautés
+      labels: [feature]
+    - title: Corrections
+      labels: [bug]
+    - title: Autres
+      labels: ["*"]
+```
+
+Les alternatives, quand les notes automatiques ne suffisent plus :
+
+| Outil | Source | Produit | S'entend avec `develop` |
+| --- | --- | --- | --- |
+| `--generate-notes` | titres de PR | la release seule | oui |
+| `git-cliff` | messages de commit | un `CHANGELOG.md` versionné | oui |
+| `release-please` | commits conventionnels | une PR qui bumpe et tague | mal — il suppose une branche unique |
+
+## Quels tags bougent
+
+Tout se joue là, et c'est ce qui se répercute chez l'utilisateur :
+
+| Tag | Nature | Ce qu'un opérateur en fait |
+| --- | --- | --- |
+| `0.2.0` | figé — un tag SemVer complet ne doit jamais être réécrit | épingler une version en production |
+| `0.2` | mouvant, suit le dernier patch de la 0.2 | recevoir les correctifs sans changement fonctionnel |
+| `latest` | mouvant, suit la dernière version stable | démonstration, jamais une production |
+| `sha-1a2b3c4` | figé, un par commit | reproduire précisément un incident |
+| `dev` | mouvant, suit `develop` | tester ce qui arrive |
+
+La même immutabilité vaut côté git : un tag est déjà cloné chez les autres, épinglé dans des
+déploiements. `git tag -f` crée deux réalités selon qu'on a fetché avant ou après. Une
+release ratée se corrige avec `v0.2.1`, jamais en réécrivant `v0.2.0`.
+
+## Pièges
+
+- **Le tag posé sur `develop`.** Il désigne un état jamais publié, et `latest` ne bougera pas
+  (la condition teste `master`). Il se tague ce qui se livre.
+- **`git push` sans `--follow-tags`.** Le commit part, le tag reste local, la CI ne voit
+  rien. Symptôme : le run de release n'existe tout simplement pas.
+- **La RC qui déplace `latest`.** Un tag `-rc.1` traité comme les autres arrive sur toutes
+  les installations qui suivent le canal par défaut.
+- **Le job de release sans `contents: write`.** Le workflow déclare `permissions: contents: read`
+  en tête, ce qui s'applique à tous les jobs : `gh release create` répond
+  `HTTP 403: Resource not accessible by integration`.
+- **Un tag annoté (`-a`) plutôt que léger.** Il porte un auteur, une date et un message ;
+  `git describe` et certains outils ne considèrent que ceux-là.
+- **Corriger un tag en le supprimant côté serveur.** GitHub garde la release, l'image reste
+  au registre : le dépôt et le registre divergent silencieusement.
+
+## Se tester
+
+<Quiz>
+	<Question>
+		Le tag `v1.0.0-rc.2` est poussé. Que produit la règle
+		`type=semver,pattern={{major}}.{{minor}}` de `metadata-action` ?
+
+		<Choix correcte>Rien</Choix>
+		<Choix>`1.0`</Choix>
+		<Choix>`1.0-rc.2`</Choix>
+		<Choix>`1.0.0-rc`</Choix>
+
+		<Correction>
+			Rien. Sur une pré-version, `metadata-action` ne produit que le tag complet
+			(`1.0.0-rc.2`) : `1.0` est un pointeur mouvant censé désigner la 1.0 stable, le
+			faire pointer sur une RC le rendrait inutilisable. Le tag `latest` est écarté par
+			la même logique, mais via `flavor`, qui teste explicitement l'absence de `-`.
+		</Correction>
+	</Question>
+	<Question>
+		Le projet est en `0.4.2`. La prochaine version renomme une variable d'environnement
+		obligatoire. Quel numéro ?
+
+		<Choix correcte>`0.5.0`</Choix>
+		<Choix>`0.4.3`</Choix>
+		<Choix>`1.0.0`</Choix>
+
+		<Correction>
+			`0.5.0`. C'est une rupture pour l'opérateur, donc pas un patch. En `0.x` c'est le
+			mineur qui porte les ruptures : le majeur reste à zéro tant qu'aucune promesse de
+			stabilité n'est faite. Passer en `1.0.0` serait un engagement, pas une conséquence
+			de ce changement.
+		</Correction>
+	</Question>
+	<Question>
+		Le job `release` échoue sur `--generate-notes`, qui ne liste qu'un seul commit alors
+		que la version en contient trente. Cause la plus probable ?
+
+		<Choix correcte>Le `checkout` s'est fait sans `fetch-depth: 0`</Choix>
+		<Choix>Le tag précédent n'était pas annoté</Choix>
+		<Choix>`GH_TOKEN` n'a pas la permission `contents: write`</Choix>
+		<Choix>Les PR n'avaient pas de label</Choix>
+
+		<Correction>
+			Le clone superficiel par défaut ne ramène qu'un commit : GitHub ne peut pas
+			calculer l'écart depuis le tag précédent. Un problème de permission produirait un
+			403 avant toute génération, et l'absence de labels changerait seulement le
+			regroupement des notes, pas leur nombre.
+		</Correction>
+	</Question>
+</Quiz>

@@ -1,0 +1,81 @@
+---
+title: GitHub Actions
+description: Lire et écrire un workflow, du déclencheur au build Docker et à la release taguée.
+tags: [ci, github, workflow]
+statut: stable
+sidebar:
+  order: 0
+  label: Vue d'ensemble
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { url as lien } from '../../../../lib/url';
+
+Un fichier YAML dans `.github/workflows/`, exécuté par GitHub sur une machine jetable à
+chaque événement du dépôt.
+
+Les pages qui suivent partent de deux workflows réels : celui de **Signet** (Go + React,
+build Docker, image sur GHCR, release taguée) et celui de **ce site** (Astro → GitHub Pages).
+
+## Le vocabulaire
+
+| Terme | Ce que c'est |
+| --- | --- |
+| **workflow** | un fichier `.yml`, déclenché par un événement |
+| **job** | un groupe d'étapes, sur **sa propre machine neuve** |
+| **step** | une étape : soit une commande shell (`run`), soit une action (`uses`) |
+| **action** | un bout de code réutilisable publié sur un dépôt (`actions/checkout@v4`) |
+| **runner** | la machine qui exécute un job (`ubuntu-latest`, chez GitHub) |
+
+## Le modèle mental
+
+Deux idées suffisent à débloquer 90 % de la lecture d'un YAML :
+
+1. **Un job = une machine vierge.** Rien ne survit d'un job à l'autre : ni les fichiers, ni
+   les dépendances installées, ni les variables. Deux jobs qui doivent partager quelque
+   chose passent par un artefact. C'est ce qui explique la moitié des lignes d'un workflow.
+2. **Les jobs tournent en parallèle par défaut.** `needs:` est ce qui les remet en ordre.
+
+## Les pages
+
+<CardGrid>
+	<LinkCard
+		title="Anatomie d'un workflow"
+		href={lien('/technique/github-actions/anatomie-d-un-workflow/')}
+		description="La structure du fichier, run vs uses, et la syntaxe ${{ }}."
+	/>
+	<LinkCard
+		title="Déclencheurs et conditions"
+		href={lien('/technique/github-actions/declencheurs-et-conditions/')}
+		description="Quand un workflow part, quand un job est sauté, et comment on annule un run."
+	/>
+	<LinkCard
+		title="Jobs, artefacts et cache"
+		href={lien('/technique/github-actions/jobs-artefacts-et-cache/')}
+		description="Faire circuler des fichiers entre des machines qui ne se connaissent pas."
+	/>
+	<LinkCard
+		title="Docker et GHCR"
+		href={lien('/technique/github-actions/docker-et-ghcr/')}
+		description="Builder une image, la taguer correctement, la pousser sur le registre GitHub."
+	/>
+	<LinkCard
+		title="Releases et SemVer"
+		href={lien('/technique/github-actions/releases-et-semver/')}
+		description="Du tag git aux images publiées et à la GitHub Release, en un push."
+	/>
+	<LinkCard
+		title="Secrets et permissions"
+		href={lien('/technique/github-actions/secrets-et-permissions/')}
+		description="GITHUB_TOKEN, droits par job, secrets, et le cas des forks."
+	/>
+	<LinkCard
+		title="Dépanner une CI"
+		href={lien('/technique/github-actions/depannage/')}
+		description="Lire les logs, relancer, reproduire en local, et les erreurs qui reviennent."
+	/>
+</CardGrid>
+
+Le choix du modèle de branches, lui, est traité dans
+[Workflows Git en équipe](/documentation/technique/workflows-git/) — la CI n'en est que
+l'exécution.
