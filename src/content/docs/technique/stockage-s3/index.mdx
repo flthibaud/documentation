@@ -1,0 +1,105 @@
+---
+title: Stockage S3
+description: Déployer et exploiter un stockage objet compatible S3 (Garage, MinIO, RustFS, AWS) sur n'importe quel serveur.
+tags: [s3, stockage, auto-hebergement]
+statut: stable
+sidebar:
+  order: 0
+  label: Vue d'ensemble
+sources:
+  - titre: AWS — Amazon S3 API Reference
+    url: https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html
+  - titre: Garage — Documentation
+    url: https://garagehq.deuxfleurs.fr/documentation/
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { url as lien } from '../../../../lib/url';
+
+S3 est une API HTTP avant d'être un produit : des **objets** (un blob et ses métadonnées)
+rangés dans des **buckets**, adressés par une **clé**, signés par une paire de clés d'accès.
+AWS l'a inventée, tout le monde l'a copiée. Un code qui ne parle que cette API change de
+serveur en changeant quatre variables d'environnement.
+
+## Le modèle mental
+
+Chaque serveur S3 a deux faces :
+
+| | Plan de données | Plan de contrôle |
+| --- | --- | --- |
+| Ce que c'est | l'API S3 : `PutObject`, `GetObject`, `ListObjectsV2`, URL pré-signées, CORS | créer des buckets et des clés, donner des droits, gérer le cluster |
+| Commun à tous ? | **oui**, à quelques trous près | **non**, propre à chaque serveur |
+| Outils | SDK AWS, `aws` CLI, `rclone` | `garage` CLI, `mc admin`, console RustFS, IAM chez AWS |
+
+L'application ne touche que le plan de données. Changer d'outil, c'est réapprendre le plan de
+contrôle — d'où une page par serveur, et le reste en commun.
+
+## Choisir un serveur
+
+| | Garage | MinIO | RustFS | AWS S3 |
+| --- | --- | --- | --- | --- |
+| Licence | AGPLv3 | AGPLv3 (communautaire), AIStor (commercial) | Apache 2.0 | service managé |
+| Langage | Rust | Go | Rust | — |
+| État | maintenu (Deuxfleurs, France) | communautaire **archivé** en 2026, plus de binaires ni d'images | jeune, 1.0 en 2026 | — |
+| Cible | petits clusters géo-distribués, matériel hétérogène | gros volumes, performance | remplaçant de MinIO | tout |
+| Console web | non (CLI + API d'admin) | oui (réduite dans la version communautaire) | oui | oui |
+| Chiffrement au repos | SSE-C seulement | SSE-S3 / SSE-KMS (avec KMS) | SSE-S3 / SSE-KMS (avec KMS) | SSE-S3 par défaut |
+| Config | fichier TOML + layout de cluster | variables d'environnement | variables d'environnement | IAM |
+
+Garage est le choix par défaut pour de l'auto-hébergement sur un ou quelques serveurs.
+MinIO se rencontre encore partout, mais en installations existantes.
+
+## Les pages
+
+<CardGrid>
+	<LinkCard
+		title="L'API S3 : l'essentiel"
+		href={lien('/technique/stockage-s3/api-s3/')}
+		description="Endpoint, région, path-style, signature SigV4, URL pré-signées, CORS, checksums."
+	/>
+	<LinkCard
+		title="Garage"
+		href={lien('/technique/stockage-s3/garage/')}
+		description="Déployer un nœud ou un cluster, layout, clés, buckets, sauvegarde des métadonnées."
+	/>
+	<LinkCard
+		title="MinIO"
+		href={lien('/technique/stockage-s3/minio/')}
+		description="Exploiter une installation existante avec mc, et en sortir."
+	/>
+	<LinkCard
+		title="RustFS"
+		href={lien('/technique/stockage-s3/rustfs/')}
+		description="Déployer RustFS en Docker, ses variables, ses pièges."
+	/>
+	<LinkCard
+		title="AWS et S3 managés"
+		href={lien('/technique/stockage-s3/aws-et-s3-manages/')}
+		description="Bucket privé, politique IAM minimale, et les équivalents Scaleway, OVH, R2, Hetzner."
+	/>
+	<LinkCard
+		title="Reverse proxy et TLS"
+		href={lien('/technique/stockage-s3/reverse-proxy/')}
+		description="Exposer l'API S3 derrière nginx, Caddy ou Traefik sans casser les signatures."
+	/>
+	<LinkCard
+		title="Côté application"
+		href={lien('/technique/stockage-s3/cote-application/')}
+		description="Configurer le SDK pour qu'il marche partout, signer pour le navigateur, tester."
+	/>
+	<LinkCard
+		title="Exploitation"
+		href={lien('/technique/stockage-s3/exploitation/')}
+		description="aws CLI et rclone, migration entre serveurs, sauvegarde, chiffrement, purge."
+	/>
+	<LinkCard
+		title="Dépannage"
+		href={lien('/technique/stockage-s3/depannage/')}
+		description="403, InvalidDigest, 413, CORS : ce que veut dire chaque erreur."
+	/>
+	<LinkCard
+		title="TP : déployer, sécuriser, migrer"
+		href={lien('/technique/stockage-s3/tp/')}
+		description="En local avec Docker : Garage, droits, URL pré-signées, proxy à réparer, migration vers RustFS, sauvegarde, cluster."
+	/>
+</CardGrid>

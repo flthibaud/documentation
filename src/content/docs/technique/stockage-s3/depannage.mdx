@@ -1,0 +1,105 @@
+---
+title: Dépannage S3
+description: Ce que veulent dire 403, InvalidDigest, 413 et les erreurs CORS, et comment trouver la cause.
+tags: [s3, stockage, depannage]
+statut: stable
+sidebar:
+  order: 9
+  label: Dépannage
+sources:
+  - titre: AWS — Troubleshooting Amazon S3 (error responses)
+    url: https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
+---
+
+import { Quiz, Question, Choix, Correction } from '../../../../components/quiz';
+
+## Méthode
+
+1. **Rejouer la requête sans le navigateur ni le proxy** : `curl` sur l'URL, puis directement
+   sur le serveur (`http://127.0.0.1:3900`). L'étage qui casse est celui où le résultat change.
+2. **Lire le corps XML** : `<Code>` et `<Message>` disent presque toujours la cause, le statut
+   HTTP rarement.
+3. **Comparer avec une requête qui marche** : `aws s3 cp` avec les mêmes identifiants. Si elle
+   passe, le problème est dans le client applicatif, pas sur le serveur.
+
+## Erreurs par symptôme
+
+| Symptôme | Cause probable | Vérifier |
+| --- | --- | --- |
+| 403 `SignatureDoesNotMatch` (AWS, MinIO, RustFS) ou `AccessDenied` (Garage) sur **tout** | `Host` réécrit par le proxy, mauvaise région, mauvais secret | requête directe sur le serveur ; `s3_region` ; `proxy_set_header Host` |
+| 403 sur **certaines clés** seulement | le proxy réécrit le chemin (`//` fusionné, encodage) | `proxy_pass` sans URI ; même clé en direct |
+| 403 sur une URL pré-signée qui marchait | expirée, ou signée pour un autre endpoint | `X-Amz-Date` + `X-Amz-Expires` ; hôte de l'URL |
+| 403 sur un upload pré-signé, le reste marche | type ou taille différents de ce qui a été signé | `X-Amz-SignedHeaders` contient `content-type;content-length` ; ce qu'envoie le navigateur |
+| 403 `RequestTimeTooSkewed` | horloge décalée de plus de 15 minutes | `timedatectl` sur le serveur et la machine cliente |
+| 400 `InvalidDigest` / `BadDigest` | checksum CRC ajouté par le SDK (corps vide au moment de signer) | `x-amz-checksum-crc32` dans l'URL ; `requestChecksumCalculation: 'WHEN_REQUIRED'` |
+| 400 `AccessControlListNotSupported` (AWS) | le client envoie une ACL, bucket en `BucketOwnerEnforced` | retirer l'option `acl` du client |
+| 400 `AuthorizationHeaderMalformed` | région du client ≠ région du serveur | le message donne la région attendue |
+| 404 `NoSuchBucket` alors qu'il existe | virtual-hosted au lieu de path-style (le nom du bucket part dans le DNS) | `forcePathStyle` |
+| 404 `NoSuchKey` juste après un upload | clé encodée différemment entre écriture et lecture | la clé exacte avec `aws s3 ls` |
+| 400 `InvalidArgument` sur quelques objets pendant une migration | clé acceptée par la source, refusée par la destination (`//`…) | renommer à la source, relancer le `sync` |
+| 413 | limite de corps du reverse proxy | `client_max_body_size 0` (nginx) |
+| 503 sur un Garage neuf | layout jamais appliqué | `garage status` : le nœud n'a pas de rôle |
+| Erreur CORS dans la console du navigateur | pas de règle sur le bucket, origine ou en-tête absent de la règle, ou en-têtes CORS ajoutés en double par le proxy | `get-bucket-cors` ; requête `OPTIONS` à la main |
+
+## Tester un preflight CORS à la main
+
+```bash
+curl -s -i -X OPTIONS https://s3.example.com/app-prod/test/x \
+  -H 'Origin: https://app.example.com' \
+  -H 'Access-Control-Request-Method: PUT' \
+  -H 'Access-Control-Request-Headers: content-type'
+```
+
+Attendu : `200` avec `access-control-allow-origin: https://app.example.com`. Une origine non
+listée doit donner `403`. Le navigateur n'affiche jamais la réponse d'un preflight refusé :
+seul ce test montre la vraie réponse.
+
+## Lire une URL pré-signée
+
+```text
+https://s3.example.com/app-prod/drafts/abc/9f3e…
+  ?X-Amz-Algorithm=AWS4-HMAC-SHA256
+  &X-Amz-Credential=GK…%2F20261012%2Fgarage%2Fs3%2Faws4_request   ← clé / date / RÉGION / service
+  &X-Amz-Date=20261012T091500Z                                     ← heure de signature (UTC)
+  &X-Amz-Expires=600                                               ← durée de validité
+  &X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost        ← ce qui est verrouillé
+  &x-amz-checksum-crc32=AAAAAA%3D%3D                               ← à ne PAS voir en auto-hébergé
+  &X-Amz-Signature=…
+```
+
+La région et l'hôte se lisent directement : la moitié des 403 se diagnostiquent ici.
+
+## Se tester
+
+<Quiz>
+	<Question>
+		Derrière nginx, toutes les requêtes signées répondent 403, mais un `aws s3 ls` lancé
+		directement sur `http://127.0.0.1:3900` depuis le serveur fonctionne. Que corriger en
+		premier ?
+
+		<Choix>La région du client</Choix>
+		<Choix correcte>`proxy_set_header Host $http_host;`</Choix>
+		<Choix>La règle CORS du bucket</Choix>
+		<Choix>`client_max_body_size`</Choix>
+
+		<Correction>
+			La requête directe passe avec les mêmes identifiants et la même région : seul le
+			proxy diffère, et la seule chose qu'il modifie qui soit signée est le `Host`. Le CORS
+			ne concerne que les navigateurs, `client_max_body_size` donne un 413.
+		</Correction>
+	</Question>
+	<Question>
+		En production, quelques fichiers seulement sont inaccessibles (403). Ils ont tous `//`
+		dans leur clé. Cause ?
+
+		<Choix>Le bucket est en virtual-hosted</Choix>
+		<Choix>Ces objets ont été écrits avec une autre clé d'accès</Choix>
+		<Choix correcte>Le proxy normalise le chemin avant de le transmettre</Choix>
+
+		<Correction>
+			Le chemin est signé. nginx avec `proxy_pass http://upstream/;` (une URI après l'hôte)
+			fusionne les `//` : le serveur voit un autre chemin que celui signé. Les droits
+			d'une clé portent sur le bucket entier, pas sur la clé d'accès qui a écrit l'objet.
+		</Correction>
+	</Question>
+</Quiz>

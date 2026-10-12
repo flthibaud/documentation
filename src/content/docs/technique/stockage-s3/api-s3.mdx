@@ -1,0 +1,172 @@
+---
+title: "L'API S3 : l'essentiel"
+description: Endpoint, région, path-style, signature SigV4, URL pré-signées, CORS et checksums — ce qui est commun à tous les serveurs.
+tags: [s3, stockage, securite]
+statut: stable
+sidebar:
+  order: 1
+sources:
+  - titre: AWS — Authenticating requests (AWS Signature Version 4)
+    url: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html
+  - titre: AWS — Uploading objects with presigned URLs
+    url: https://docs.aws.amazon.com/AmazonS3/latest/userguide/PresignedUrlUploadObject.html
+  - titre: AWS — Virtual hosting of buckets
+    url: https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html
+  - titre: AWS SDKs — Data integrity protections
+    url: https://docs.aws.amazon.com/sdkref/latest/guide/feature-dataintegrity.html
+---
+
+import { Quiz, Question, Choix, Correction } from '../../../../components/quiz';
+
+## Les quatre réglages d'un client
+
+Tout client S3 (SDK, `aws` CLI, `rclone`) a besoin de :
+
+| Réglage | AWS | Auto-hébergé |
+| --- | --- | --- |
+| **endpoint** | déduit de la région | obligatoire : `https://s3.example.com` |
+| **région** | `eu-west-3`… | celle que le serveur attend (`garage`, `us-east-1`…) |
+| **style d'adressage** | virtual-hosted | **path-style** en général |
+| **clé d'accès** + secret | IAM | créés sur le serveur |
+
+La région n'est pas décorative : elle entre dans la signature. Une région fausse donne une
+erreur de signature, pas une erreur de région.
+
+## Path-style ou virtual-hosted
+
+```text
+virtual-hosted : https://mon-bucket.s3.example.com/dossier/fichier.pdf
+path-style     : https://s3.example.com/mon-bucket/dossier/fichier.pdf
+```
+
+Le virtual-hosted demande un DNS et un certificat wildcard (`*.s3.example.com`). En
+auto-hébergé, on force donc le path-style côté client (`forcePathStyle: true`,
+`--s3-force-path-style`, `addressing_style = path`). Un nom de bucket avec des points casse le
+virtual-hosted en HTTPS : le wildcard ne couvre qu'un niveau.
+
+## La signature (SigV4)
+
+Chaque requête est signée avec le secret, sur : la méthode, le chemin, la query, **l'en-tête
+`Host`**, les en-têtes listés dans `SignedHeaders`, la date, la région et le service. Trois
+conséquences pratiques :
+
+- **Le `Host` est signé.** Un reverse proxy qui le réécrit casse toutes les requêtes
+  (voir [Reverse proxy](/documentation/technique/stockage-s3/reverse-proxy/)). Une URL signée
+  pour `http://s3:3900` est refusée si on l'appelle via `https://s3.example.com`.
+- **L'horloge compte.** Au-delà d'environ 15 minutes d'écart, le serveur refuse
+  (`RequestTimeTooSkewed`). NTP sur le serveur et dans les conteneurs.
+- **Le corps n'est pas forcément signé.** Les URL pré-signées utilisent
+  `UNSIGNED-PAYLOAD` : ce qui est contraint, ce sont les en-têtes signés.
+
+## URL pré-signées
+
+Une URL qui porte sa signature dans la query (`X-Amz-Signature`, `X-Amz-Expires`…). Le
+serveur la vérifie comme une requête signée : n'importe qui peut l'utiliser jusqu'à
+expiration, pour cette opération et cette clé seulement. C'est ainsi qu'un navigateur
+envoie un fichier directement au stockage sans passer par le serveur applicatif.
+
+Ce qu'on peut figer dans un PUT pré-signé, à condition de le signer comme en-tête :
+
+| Contrainte | Comment | Effet si le client triche |
+| --- | --- | --- |
+| clé | dans le chemin | autre clé = autre signature |
+| type | `ContentType` + `content-type` dans les en-têtes signés | 403 |
+| taille exacte | `ContentLength` + `content-length` dans les en-têtes signés | 403 |
+| durée | `expiresIn` (max 7 jours en SigV4) | 403 après expiration |
+
+Une **taille maximale** (plutôt qu'exacte) n'existe qu'avec un POST pré-signé (formulaire +
+policy `content-length-range`), moins bien supporté hors AWS.
+
+Le `Content-Disposition` d'un GET pré-signé se force avec `ResponseContentDisposition` :
+`attachment` empêche le navigateur d'afficher un HTML ou un SVG téléversé dans l'origine du
+stockage.
+
+## Droits : policies, ACL, accès anonyme
+
+- **Policies** (JSON IAM) : le mécanisme moderne. AWS, MinIO, RustFS.
+- **ACL** : l'ancien mécanisme. AWS les désactive par défaut sur les nouveaux buckets ;
+  Garage les ignore.
+- **Garage** n'a ni policy ni ACL : une clé a des droits `read` / `write` / `owner` sur un
+  bucket, c'est tout.
+
+Partout, un bucket est privé par défaut. Un `GET` sans signature doit répondre 403 — c'est le
+premier test à faire après un déploiement.
+
+## CORS
+
+Nécessaire dès qu'un navigateur appelle le stockage (upload direct). La règle se pose **sur le
+bucket**, via l'API S3 (`PutBucketCors`), pas sur le reverse proxy :
+
+```json
+{
+	"CORSRules": [
+		{
+			"AllowedOrigins": ["https://app.example.com"],
+			"AllowedMethods": ["PUT"],
+			"AllowedHeaders": ["content-type"],
+			"ExposeHeaders": ["ETag"],
+			"MaxAgeSeconds": 3600
+		}
+	]
+}
+```
+
+## Checksums : le piège des SDK récents
+
+Depuis début 2025, les SDK AWS (JS v3, Python, Go, Java, CLI v2) calculent par défaut un
+checksum CRC sur chaque upload (`requestChecksumCalculation: WHEN_SUPPORTED`). Sur une URL
+pré-signée, le checksum est calculé **au moment de la signature**, sur un corps vide, et
+ajouté à l'URL (`x-amz-checksum-crc32=AAAAAA==`). Le vrai fichier ne correspond pas : le
+serveur répond `400 InvalidDigest` (Garage) ou `BadDigest`.
+
+Sur les serveurs auto-hébergés, régler le client sur `WHEN_REQUIRED`, pour les requêtes comme
+pour les réponses. Détail sur [Côté application](/documentation/technique/stockage-s3/cote-application/).
+
+## Se tester
+
+<Quiz>
+	<Question>
+		Un PUT pré-signé pour `application/pdf` et 2 048 octets, signé avec `content-type` et
+		`content-length` dans les en-têtes signés. Le navigateur envoie 4 096 octets avec le bon
+		type. Que se passe-t-il ?
+
+		<Choix>Le serveur accepte et tronque à 2 048 octets</Choix>
+		<Choix>Le serveur accepte : seul le type est vérifié</Choix>
+		<Choix correcte>Le serveur répond 403</Choix>
+		<Choix>Le serveur répond 413</Choix>
+
+		<Correction>
+			`content-length` fait partie de la signature : une autre valeur donne une autre
+			signature, donc 403. Rien n'est tronqué. Un 413 viendrait d'un reverse proxy (limite
+			de taille du corps), pas du serveur S3.
+		</Correction>
+	</Question>
+	<Question>
+		Le cms signe avec l'endpoint interne `http://s3:3900`, le navigateur appelle
+		`https://files.example.com`. Résultat ?
+
+		<Choix>Ça marche si le proxy transmet le `Host` d'origine</Choix>
+		<Choix correcte>403 : le `Host` signé ne correspond pas à celui reçu</Choix>
+		<Choix>Ça marche, seul le chemin est signé</Choix>
+
+		<Correction>
+			L'hôte est dans la signature. Il faut signer avec l'endpoint public — d'où deux
+			clients S3 dans l'application, un interne pour opérer, un public pour signer.
+		</Correction>
+	</Question>
+	<Question>
+		Un upload pré-signé échoue en `400 InvalidDigest` après une mise à jour du SDK AWS.
+		Cause la plus probable ?
+
+		<Choix>L'horloge du serveur a dérivé</Choix>
+		<Choix>La région du client est fausse</Choix>
+		<Choix correcte>Le SDK ajoute un checksum CRC calculé sur un corps vide</Choix>
+		<Choix>Le CORS du bucket bloque la requête</Choix>
+
+		<Correction>
+			L'horloge et la région donnent des erreurs de signature (403), et un blocage CORS
+			n'atteint jamais le serveur. `InvalidDigest` est spécifique au checksum : régler
+			`requestChecksumCalculation` sur `WHEN_REQUIRED`.
+		</Correction>
+	</Question>
+</Quiz>

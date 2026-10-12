@@ -1,0 +1,736 @@
+---
+title: "TP : déployer, sécuriser, migrer"
+description: Travaux pratiques en local avec Docker — un Garage, des clés aux droits limités, CORS et URL pré-signées, un reverse proxy à réparer, une migration vers RustFS, une sauvegarde chiffrée et un cluster de trois nœuds.
+tags: [s3, stockage, docker, auto-hebergement]
+statut: stable
+sidebar:
+  order: 10
+  label: "TP : déployer, sécuriser, migrer"
+---
+
+import { Quiz, Question, Choix, Correction } from '../../../../components/quiz';
+
+Tout tourne en local avec Docker Compose, sans compte ni service externe. Chaque partie se
+termine par des résultats attendus : si un résultat diffère, c'est là que se trouve
+l'exercice. Les corrigés sont repliés.
+
+| Partie | Thème | Durée |
+| --- | --- | --- |
+| 1 | Déployer Garage | 20 min |
+| 2 | Clés, droits, accès anonyme | 20 min |
+| 3 | CORS et URL pré-signées | 30 min |
+| 4 | Reverse proxy : casser, comprendre, réparer | 30 min |
+| 5 | Migrer vers RustFS | 30 min |
+| 6 | Sauvegarde chiffrée et restauration | 20 min |
+| 7 | Bonus : cluster de trois nœuds | 30 min |
+
+Prérequis : Docker avec Compose v2, `curl`. Versions utilisées : Garage v2.4.1, RustFS 1.0.0.
+Les ports choisis (13900, 13903, 18080, 19000, 23900-23902) évitent les conflits avec un
+environnement de dev existant.
+
+## 0. Le dossier de travail
+
+```text
+tp-s3/
+├── compose.yaml
+├── garage.toml
+├── nginx.conf
+├── cors.json
+├── presign.mjs
+├── aws/          ← config et identifiants de la CLI AWS
+└── rclone/       ← config rclone
+```
+
+```bash
+mkdir -p ~/tp-s3/aws ~/tp-s3/rclone && cd ~/tp-s3
+```
+
+```yaml title="compose.yaml"
+name: tp-s3
+
+services:
+  garage:
+    image: dxflrs/garage:v2.4.1
+    ports:
+      - '127.0.0.1:13900:3900' # API S3
+      - '127.0.0.1:13903:3903' # API d'administration
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+
+  proxy:
+    image: nginx:alpine
+    profiles: [proxy]
+    ports:
+      - '127.0.0.1:18080:80'
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  rustfs:
+    image: rustfs/rustfs:1.0.0
+    profiles: [migration]
+    environment:
+      RUSTFS_ACCESS_KEY: tp-rustfs-admin
+      RUSTFS_SECRET_KEY: tp-rustfs-secret-change-me
+    ports:
+      - '127.0.0.1:19000:9000'
+    volumes:
+      - rustfs-data:/data
+
+  # --- Outils, lancés à la demande avec `docker compose run --rm <outil>` ---
+  aws:
+    image: amazon/aws-cli:latest
+    profiles: [outils]
+    volumes:
+      - ./aws:/root/.aws
+      - ./:/tp
+    working_dir: /tp
+
+  rclone:
+    image: rclone/rclone:latest
+    profiles: [outils]
+    volumes:
+      - ./rclone:/config/rclone
+      - ./:/tp
+    working_dir: /tp
+
+  node:
+    image: node:24-alpine
+    profiles: [outils]
+    volumes:
+      - ./:/tp
+    working_dir: /tp
+    entrypoint: ['node']
+
+volumes:
+  garage-meta:
+  garage-data:
+  rustfs-data:
+```
+
+Les outils tournent dans le réseau Compose : ils joignent les serveurs par leur nom de
+service (`http://garage:3900`). Depuis la machine hôte (`curl`), on passe par les ports
+publiés (`http://localhost:13900`).
+
+## 1. Déployer Garage
+
+```toml title="garage.toml"
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "4f0c6e1d2b8a9f7e3c5d6a1b2e8f9c0d7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "tp-admin-token"
+metrics_token = "tp-metrics-token"
+```
+
+```bash
+docker compose up -d
+alias garage='docker compose exec garage /garage'
+
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:13903/health
+garage status
+```
+
+**À faire** : donner un rôle au nœud (zone `salle-a`, capacité `1G`), appliquer le layout,
+puis revérifier `/health`.
+
+| Vérification | Attendu |
+| --- | --- |
+| `/health` avant le layout | `503` |
+| `garage status` avant | `NO ROLE ASSIGNED` |
+| `/health` après | `200` |
+
+<details>
+<summary>Corrigé</summary>
+
+```bash
+garage layout assign -z salle-a -c 1G <les premiers caractères de l'ID>
+garage layout apply --version 1
+```
+
+Un nœud sans rôle ne stocke rien : Garage ne sait pas où placer les données, donc il ne
+répond pas aux requêtes S3.
+
+</details>
+
+## 2. Clés, droits, accès anonyme
+
+**À faire** :
+
+1. Créer un bucket `documents`.
+2. Créer deux clés : `app` en lecture-écriture, `lecture` en lecture seule sur `documents`.
+3. Reporter les clés dans la config de la CLI AWS (gabarit ci-dessous).
+4. Envoyer un fichier avec `app`, le lister avec `lecture`, tenter d'écrire avec `lecture`.
+5. Tenter de lire le fichier sans signature avec `curl`.
+
+```ini title="aws/config"
+[profile app]
+region = garage
+endpoint_url = http://garage:3900
+s3 =
+  addressing_style = path
+
+[profile lecture]
+region = garage
+endpoint_url = http://garage:3900
+s3 =
+  addressing_style = path
+```
+
+```ini title="aws/credentials"
+[app]
+aws_access_key_id = GK…
+aws_secret_access_key = …
+
+[lecture]
+aws_access_key_id = GK…
+aws_secret_access_key = …
+```
+
+```bash
+alias aws='docker compose run --rm aws'
+echo "Bonjour le TP" > bonjour.txt
+```
+
+| Vérification | Attendu |
+| --- | --- |
+| `cp` avec `app` | `upload: ./bonjour.txt to s3://documents/notes/bonjour.txt` |
+| `ls` avec `lecture` | le fichier apparaît |
+| `cp` avec `lecture` | `AccessDenied … Operation is not allowed for this key` |
+| `curl http://localhost:13900/documents/notes/bonjour.txt` | `403` |
+
+<details>
+<summary>Corrigé</summary>
+
+```bash
+garage bucket create documents
+garage key create app        # noter Key ID et Secret key
+garage key create lecture
+garage bucket allow --read --write documents --key app
+garage bucket allow --read documents --key lecture
+garage bucket info documents  # RW pour app, R pour lecture
+
+aws --profile app s3 cp bonjour.txt s3://documents/notes/bonjour.txt
+aws --profile lecture s3 ls s3://documents --recursive
+aws --profile lecture s3 cp bonjour.txt s3://documents/notes/pirate.txt   # refusé
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:13900/documents/notes/bonjour.txt
+```
+
+`garage key info <nom> --show-secret` réaffiche un secret oublié.
+
+</details>
+
+## 3. CORS et URL pré-signées
+
+### CORS
+
+```json title="cors.json"
+{
+	"CORSRules": [
+		{
+			"AllowedOrigins": ["http://localhost:5500"],
+			"AllowedMethods": ["PUT"],
+			"AllowedHeaders": ["content-type"],
+			"ExposeHeaders": ["ETag"],
+			"MaxAgeSeconds": 3600
+		}
+	]
+}
+```
+
+**À faire** : appliquer cette règle au bucket avec la clé `app`. Constater l'échec, en
+comprendre la raison, et le faire avec une troisième clé `ops` dédiée. Puis tester le
+preflight depuis deux origines.
+
+```bash
+preflight() {
+  curl -s -o /dev/null -w '%{http_code}\n' -X OPTIONS http://localhost:13900/documents/test \
+    -H "Origin: $1" -H 'Access-Control-Request-Method: PUT' -H 'Access-Control-Request-Headers: content-type'
+}
+preflight http://localhost:5500
+preflight http://evil.localhost
+```
+
+| Vérification | Attendu |
+| --- | --- |
+| `put-bucket-cors` avec `app` | `AccessDenied` |
+| preflight depuis `localhost:5500` | `200` |
+| preflight depuis `evil.localhost` | `403` |
+
+<details>
+<summary>Corrigé</summary>
+
+Modifier le CORS est une opération d'administration du bucket : il faut le droit `owner`,
+que la clé applicative n'a pas — et ne doit pas avoir.
+
+```bash
+garage key create ops
+garage bucket allow --read --write --owner documents --key ops
+# ajouter [profile ops] et [ops] dans aws/config et aws/credentials
+aws --profile ops s3api put-bucket-cors --bucket documents --cors-configuration file://cors.json
+```
+
+</details>
+
+### URL pré-signées
+
+Un script qui signe un `PUT` pour une clé, un type et une taille :
+
+```js title="presign.mjs"
+// Usage : node presign.mjs <endpoint vu par le client> <clé> <type> <taille>
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
+const [endpoint, key, contentType, size] = process.argv.slice(2);
+
+const client = new S3Client({
+	endpoint,
+	region: 'garage',
+	forcePathStyle: true,
+	requestChecksumCalculation: process.env.CHECKSUM ?? 'WHEN_REQUIRED',
+	credentials: {
+		accessKeyId: process.env.KEY_ID,
+		secretAccessKey: process.env.SECRET,
+	},
+});
+
+const url = await getSignedUrl(
+	client,
+	new PutObjectCommand({
+		Bucket: 'documents',
+		Key: key,
+		ContentType: contentType,
+		ContentLength: Number(size),
+	}),
+	{ expiresIn: 300, signableHeaders: new Set(['content-type', 'content-length']) },
+);
+console.log(url);
+```
+
+```bash
+# avec ton UID : sinon node_modules appartient à root
+docker compose run --rm --user "$(id -u):$(id -g)" -e npm_config_cache=/tmp/npm \
+  --entrypoint npm node install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+
+export KEY_ID=GK… SECRET=…        # la clé app
+sign() { docker compose run --rm -e KEY_ID -e SECRET -e CHECKSUM node presign.mjs "$@" 2>/dev/null | tail -1; }
+put()  { curl -s -o r.xml -w '%{http_code}' -X PUT -H "Content-Type: $2" --data-binary @"$3" "$1"; grep -o '<Code>[^<]*' r.xml | sed 's/<Code>/ /'; echo; }
+
+head -c 2048 /dev/urandom > fichier.pdf
+head -c 4096 /dev/urandom > gros.pdf
+
+URL=$(sign http://localhost:13900 uploads/fichier.pdf application/pdf 2048)
+```
+
+**À faire** : envoyer avec `put` le bon fichier, puis un autre type, puis un autre fichier ;
+ensuite signer pour `http://garage:3900` et appeler l'URL via `localhost:13900` ; enfin
+signer avec `CHECKSUM=WHEN_SUPPORTED` (le défaut du SDK).
+
+| Essai | Attendu |
+| --- | --- |
+| `put "$URL" application/pdf fichier.pdf` | `200` |
+| même URL, type `text/html` | `403 AccessDenied` |
+| même URL, `gros.pdf` | `403 AccessDenied` |
+| signée pour `garage:3900`, appelée via `localhost:13900` | `403 AccessDenied` |
+| `CHECKSUM=WHEN_SUPPORTED` | `400 InvalidDigest` |
+
+<details>
+<summary>Corrigé</summary>
+
+```bash
+put "$URL" application/pdf fichier.pdf
+put "$URL" text/html fichier.pdf
+put "$URL" application/pdf gros.pdf
+
+URL2=$(sign http://garage:3900 uploads/f2.pdf application/pdf 2048)
+put "${URL2/garage:3900/localhost:13900}" application/pdf fichier.pdf
+
+URL3=$(CHECKSUM=WHEN_SUPPORTED sign http://localhost:13900 uploads/f3.pdf application/pdf 2048)
+put "$URL3" application/pdf fichier.pdf
+echo "$URL3" | tr '&' '\n' | grep checksum
+```
+
+- Type, taille et hôte sont dans la signature : toute différence donne une autre signature.
+- Le dernier cas : le SDK calcule un CRC32 au moment de signer, sur un corps vide
+  (`x-amz-checksum-crc32=AAAAAA==`). Voir
+  [L'API S3](/documentation/technique/stockage-s3/api-s3/).
+
+</details>
+
+## 4. Reverse proxy : casser, comprendre, réparer
+
+La configuration de départ « a l'air » correcte :
+
+```nginx title="nginx.conf"
+server {
+    listen 80;
+    server_name localhost;
+
+    location / {
+        proxy_pass http://garage:3900/;
+    }
+}
+```
+
+```bash
+docker compose --profile proxy up -d proxy
+head -c 3000000 /dev/urandom > photo.jpg
+
+tester() {
+  echo "petit : $(put "$(sign http://localhost:18080 uploads/a.pdf application/pdf 2048)" application/pdf fichier.pdf)"
+  echo "3 Mo  : $(put "$(sign http://localhost:18080 uploads/photo.jpg image/jpeg 3000000)" image/jpeg photo.jpg)"
+  echo "//    : $(put "$(sign http://localhost:18080 'uploads//double.pdf' application/pdf 2048)" application/pdf fichier.pdf)"
+}
+tester
+```
+
+**À faire** : obtenir trois `200`, en corrigeant **un problème à la fois** et en relançant
+`tester` après chaque modification (`docker compose --profile proxy restart proxy`).
+
+| Configuration | petit | 3 Mo | `//` |
+| --- | --- | --- | --- |
+| de départ | 403 | 413 | 403 |
+| après la 1re correction | 200 | 413 | 403 |
+| après la 2e | 200 | 200 | 403 |
+| après la 3e | 200 | 200 | 200 |
+
+<details>
+<summary>Corrigé</summary>
+
+```nginx title="nginx.conf"
+server {
+    listen 80;
+    server_name localhost;
+    client_max_body_size 0;            # 2. limite de 1 Mo par défaut → 413
+    proxy_request_buffering off;
+
+    location / {
+        proxy_pass http://garage:3900;     # 3. sans « / » final : chemin transmis tel quel
+        proxy_set_header Host $http_host;  # 1. sinon nginx envoie « garage:3900 » → 403
+    }
+}
+```
+
+1. **403 partout** : l'URL est signée pour `localhost:18080`, nginx transmet
+   `Host: garage:3900`.
+2. **413** : `client_max_body_size` vaut 1 Mo par défaut.
+3. **403 sur `//` seulement** : avec une URI dans `proxy_pass`, nginx normalise le chemin et
+   fusionne `//` ; le chemin reçu n'est plus celui qui a été signé.
+
+Le troisième bug n'apparaît que sur certaines clés : en production, quelques fichiers
+inaccessibles parmi des milliers.
+
+</details>
+
+## 5. Migrer vers RustFS
+
+```bash
+docker compose --profile migration up -d rustfs
+```
+
+```ini title="rclone/rclone.conf"
+[garage]
+type = s3
+provider = Other
+endpoint = http://garage:3900
+region = garage
+force_path_style = true
+access_key_id = GK…            # la clé ops
+secret_access_key = …
+
+[rustfs]
+type = s3
+provider = Other
+endpoint = http://rustfs:9000
+region = us-east-1
+force_path_style = true
+access_key_id = tp-rustfs-admin
+secret_access_key = tp-rustfs-secret-change-me
+```
+
+```bash
+alias rclone='docker compose run --rm rclone'
+```
+
+**À faire**, dans l'ordre d'une vraie migration :
+
+1. Lister les buckets des deux côtés, créer `documents` sur RustFS.
+2. Simuler la copie (`--dry-run`), puis la lancer.
+3. Pendant ce temps, « la production » écrit un nouveau fichier sur Garage.
+4. Vérifier, recopier le delta, revérifier jusqu'à 0 différence.
+5. Lire un fichier sur RustFS avec un nouveau profil AWS, tester l'accès anonyme.
+
+| Vérification | Attendu |
+| --- | --- |
+| premier `sync` | **échoue** sur un objet : à analyser |
+| `rclone check` final | `0 differences found` |
+| `curl http://localhost:19000/documents/notes/bonjour.txt` | `403` |
+
+<details>
+<summary>Corrigé</summary>
+
+```bash
+rclone lsd garage: && rclone mkdir rustfs:documents
+rclone sync garage:documents rustfs:documents --checksum --dry-run
+rclone sync garage:documents rustfs:documents --checksum
+```
+
+Le `sync` échoue sur `uploads//double.pdf` : `400 InvalidArgument`. **RustFS refuse les
+clés contenant `//`, Garage les accepte.** Les noms de clés ne sont pas portables d'un serveur
+à l'autre — raison de plus pour générer des clés simples (UUID) côté application. rclone
+refuse alors de supprimer quoi que ce soit à la destination (`not deleting files as there
+were IO errors`).
+
+Correction côté source, puis reprise :
+
+```bash
+aws --profile ops s3 mv 's3://documents/uploads//double.pdf' s3://documents/uploads/double.pdf
+
+echo "écrit pendant la migration" > tardif.txt
+aws --profile app s3 cp tardif.txt s3://documents/notes/tardif.txt
+
+rclone check garage:documents rustfs:documents    # tardif.txt manquant
+rclone sync garage:documents rustfs:documents --checksum -v
+rclone check garage:documents rustfs:documents    # 0 differences found
+```
+
+Nouveau profil, puis bascule :
+
+```ini
+# aws/config
+[profile app-rustfs]
+region = us-east-1
+endpoint_url = http://rustfs:9000
+s3 =
+  addressing_style = path
+```
+
+```bash
+aws --profile app-rustfs s3 cp s3://documents/notes/tardif.txt -
+```
+
+Ce qui n'a pas suivi : les clés (on utilise ici le root RustFS, à remplacer par un
+utilisateur dédié créé dans la console), le CORS, les droits. À refaire à la main.
+
+</details>
+
+## 6. Sauvegarde chiffrée et restauration
+
+**À faire** : sauvegarder `garage:documents` dans un bucket `sauvegarde` de RustFS, chiffré
+par rclone, avec une archive datée des fichiers supprimés ou écrasés. Puis supprimer un
+fichier « par erreur » et le restaurer.
+
+<details>
+<summary>Corrigé</summary>
+
+```bash
+rclone obscure 'phrase-de-passe-du-tp'   # à coller dans password
+rclone obscure 'sel-du-tp'               # à coller dans password2
+```
+
+```ini
+# rclone/rclone.conf (à la suite)
+[sauvegarde]
+type = crypt
+remote = rustfs:sauvegarde
+password = …
+password2 = …
+```
+
+```bash
+rclone mkdir rustfs:sauvegarde
+rclone sync garage:documents sauvegarde:courant --backup-dir sauvegarde:archives/$(date +%F) --checksum
+
+rclone ls rustfs:sauvegarde       # noms et contenus illisibles
+rclone ls sauvegarde:courant      # en clair, à travers crypt
+
+aws --profile app s3 rm s3://documents/notes/bonjour.txt
+rclone sync garage:documents sauvegarde:courant --backup-dir sauvegarde:archives/$(date +%F) --checksum
+rclone ls sauvegarde:archives     # bonjour.txt y a été déplacé
+
+rclone copy sauvegarde:archives/$(date +%F)/notes/bonjour.txt garage:documents/notes/
+aws --profile lecture s3 cp s3://documents/notes/bonjour.txt -
+```
+
+Sans `--backup-dir`, le second `sync` aurait supprimé `bonjour.txt` de la sauvegarde aussi.
+Perdre les deux mots de passe rend la sauvegarde illisible : ils se rangent ailleurs que dans
+le `rclone.conf` du serveur sauvegardé.
+
+</details>
+
+## 7. Bonus : un cluster de trois nœuds
+
+Dans un dossier séparé, `~/tp-s3/cluster`. Trois configurations identiques à une ligne près
+(`rpc_public_addr`), avec `replication_factor = 3` :
+
+```bash
+mkdir -p ~/tp-s3/cluster && cd ~/tp-s3/cluster
+for n in 1 2 3; do cat > garage-$n.toml <<EOF
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 3
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "noeud$n:3901"
+rpc_secret = "9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "tp-admin-token"
+EOF
+done
+```
+
+```yaml title="cluster/compose.yaml"
+name: tp-s3-cluster
+
+x-noeud: &noeud
+  image: dxflrs/garage:v2.4.1
+
+services:
+  noeud1:
+    <<: *noeud
+    ports: ['127.0.0.1:23900:3900']
+    volumes: ['./garage-1.toml:/etc/garage.toml:ro', 'meta1:/var/lib/garage/meta', 'data1:/var/lib/garage/data']
+  noeud2:
+    <<: *noeud
+    ports: ['127.0.0.1:23901:3900']
+    volumes: ['./garage-2.toml:/etc/garage.toml:ro', 'meta2:/var/lib/garage/meta', 'data2:/var/lib/garage/data']
+  noeud3:
+    <<: *noeud
+    ports: ['127.0.0.1:23902:3900']
+    volumes: ['./garage-3.toml:/etc/garage.toml:ro', 'meta3:/var/lib/garage/meta', 'data3:/var/lib/garage/data']
+
+volumes: { meta1: {}, data1: {}, meta2: {}, data2: {}, meta3: {}, data3: {} }
+```
+
+**À faire** :
+
+1. Démarrer, relier les nœuds entre eux, leur donner une zone chacun (`zone-1` à `zone-3`).
+2. Créer un bucket `archives`, une clé, envoyer un fichier.
+3. Arrêter `noeud3` (`docker compose stop noeud3`), **attendre** qu'il apparaisse dans
+   `FAILED NODES` de `garage status` (environ une minute), puis lire et écrire.
+4. Arrêter aussi `noeud2`, relire et réécrire.
+5. Redémarrer les deux nœuds, revenir à un cluster complet, et vérifier que `noeud3` a reçu
+   le fichier écrit pendant son absence.
+
+| État | Lecture | Écriture |
+| --- | --- | --- |
+| 3 nœuds sur 3 | oui | oui |
+| 2 sur 3 | oui | oui |
+| 1 sur 3 | `503` | `503` |
+
+<details>
+<summary>Corrigé</summary>
+
+```bash
+docker compose up -d
+alias g1='docker compose exec noeud1 /garage'
+
+# 1. relier : l'ID complet de chaque nœud, au format id@hôte:port
+g1 node connect "$(docker compose exec -T noeud2 /garage node id -q)"
+g1 node connect "$(docker compose exec -T noeud3 /garage node id -q)"
+g1 status                                   # 3 nœuds, NO ROLE ASSIGNED
+g1 layout assign -z zone-1 -c 1G <id1>
+g1 layout assign -z zone-2 -c 1G <id2>
+g1 layout assign -z zone-3 -c 1G <id3>
+g1 layout apply --version 1
+
+# 2.
+g1 bucket create archives
+g1 key create tp
+g1 bucket allow --read --write archives --key tp
+```
+
+Pour la CLI AWS, dans le réseau du cluster :
+
+```bash
+awsc() {
+  docker run --rm --network tp-s3-cluster_default -v "$PWD:/w" -w /w \
+    -e AWS_ACCESS_KEY_ID=GK… -e AWS_SECRET_ACCESS_KEY=… -e AWS_DEFAULT_REGION=garage \
+    -e AWS_MAX_ATTEMPTS=1 amazon/aws-cli --endpoint-url "http://$1:3900" "${@:2}"
+}
+echo "trois nœuds" > t.txt
+awsc noeud1 s3 cp t.txt s3://archives/t.txt
+```
+
+Avec `replication_factor = 3`, chaque bloc est sur les trois nœuds, et une opération demande
+une majorité (**quorum de 2**). À 2 nœuds sur 3, le quorum est atteint ; à 1 sur 3, Garage
+répond `Could not reach quorum of 2` plutôt que de servir une donnée peut-être périmée.
+
+Au redémarrage, les conteneurs changent d'adresse IP et les nœuds ne se retrouvent pas tout
+seuls : relancer les deux `node connect` ci-dessus. Sur de vrais serveurs aux adresses fixes,
+ou avec `bootstrap_peers` dans la config, la reconnexion est automatique. Une fois le cluster
+complet, `awsc noeud3 s3 ls s3://archives/` montre le fichier écrit pendant l'absence de
+`noeud3` : Garage a resynchronisé les blocs.
+
+</details>
+
+## Nettoyer
+
+```bash
+cd ~/tp-s3/cluster && docker compose down -v
+cd ~/tp-s3 && docker compose --profile proxy --profile migration down -v
+```
+
+## Se tester
+
+<Quiz>
+	<Question>
+		Pourquoi la clé `app` ne peut-elle pas poser la règle CORS du bucket ?
+
+		<Choix>Garage ne supporte pas le CORS</Choix>
+		<Choix correcte>Il faut le droit `owner` sur le bucket, que la clé applicative n'a pas</Choix>
+		<Choix>Le CORS se règle uniquement dans le reverse proxy</Choix>
+
+		<Correction>
+			Garage supporte le CORS, via l'API S3, avec une clé `owner`. Une clé applicative n'a
+			besoin que de lire et écrire des objets : lui donner `owner` lui permettrait de
+			changer le CORS du bucket. Le CORS côté proxy fait doublon avec celui du serveur.
+		</Correction>
+	</Question>
+	<Question>
+		Pendant la migration, le premier `rclone sync` échoue sur un seul objet. Que fait rclone
+		des fichiers présents à la destination mais absents de la source ?
+
+		<Choix>Il les supprime, comme prévu par `sync`</Choix>
+		<Choix correcte>Il ne supprime rien tant qu'une erreur a eu lieu</Choix>
+		<Choix>Il les déplace dans `--backup-dir`</Choix>
+
+		<Correction>
+			Après une erreur d'entrée-sortie, rclone ne fait pas de suppression : une source
+			partiellement illisible pourrait sinon vider la destination. `--backup-dir` n'est
+			utilisé que s'il est passé explicitement.
+		</Correction>
+	</Question>
+	<Question>
+		Cluster de trois nœuds, `replication_factor = 3`. Deux nœuds sont arrêtés. Que répond le
+		dernier à une lecture ?
+
+		<Choix>Il sert sa copie locale, qui est complète</Choix>
+		<Choix correcte>`503` : le quorum de 2 n'est pas atteint</Choix>
+		<Choix>Il redirige vers un nœud disponible</Choix>
+
+		<Correction>
+			Sa copie est complète, mais il ne peut pas vérifier qu'elle est la plus récente sans
+			une majorité. Garage choisit la cohérence plutôt que la disponibilité.
+		</Correction>
+	</Question>
+</Quiz>
